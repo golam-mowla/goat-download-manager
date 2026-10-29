@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GM Downloader</string>
+    <string name="title_activity_main">GM Downloader</string>
+    <string name="package_name">com.golammowla.gmdownloader</string>
+    <string name="custom_url_scheme">com.golammowla.gmdownloader</string>
+</resources>
