@@ -1,6 +1,6 @@
 [package]
 name = "gdm"
-version = "1.0.3"
+version = "1.0.4"
 description = "Goat Download Manager (GDM) - High-performance multithreaded HTTP and media downloader"
 authors = ["Golam Mowla"]
 edition = "2021"

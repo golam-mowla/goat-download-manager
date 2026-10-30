@@ -250,8 +250,8 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1f2937] bg-[#162032]">
           <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-lg">
-              🐐
+            <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-transparent flex-shrink-0">
+              <img src="/icon.png" alt="Goat" className="w-full h-full object-contain" />
             </div>
             <div>
               <h2 className="font-bold text-sm text-white">
