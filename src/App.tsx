@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -37,6 +37,11 @@ export const App: React.FC = () => {
     return (localStorage.getItem("gdm-theme") as "dark" | "light") || "dark";
   });
   const [activePopupTask, setActivePopupTask] = useState<DownloadTask | null>(null);
+
+  const defaultDirRef = useRef(defaultDir);
+  defaultDirRef.current = defaultDir;
+  const handleAddMediaDownloadRef = useRef<(options: any) => Promise<void>>(() => Promise.resolve());
+  const handleAddDirectDownloadRef = useRef<(url: string, savePath: string, filename: string, connections: number) => Promise<void>>(() => Promise.resolve());
 
   useEffect(() => {
     if (theme === "dark") {
@@ -200,6 +205,8 @@ export const App: React.FC = () => {
       const raw = event.payload;
       let targetUrl = "";
       let targetFilename = "";
+      let targetQuality = "";
+      let autoStart = false;
       if (typeof raw === "string") {
         targetUrl = raw;
       } else if (raw && typeof raw === "object" && raw.url) {
@@ -207,11 +214,89 @@ export const App: React.FC = () => {
         if (raw.filename) {
           targetFilename = String(raw.filename);
         }
+        if (raw.quality) {
+          targetQuality = String(raw.quality);
+        }
+        if (raw.autoStart || raw.autostart) {
+          autoStart = true;
+        }
       }
       if (targetUrl && targetUrl.trim()) {
-        setModalInitialUrl(targetUrl.trim());
-        setModalInitialFilename(targetFilename.trim());
-        setIsAddModalOpen(true);
+        const clean = targetUrl.trim();
+        if (autoStart) {
+          const lower = clean.toLowerCase();
+          const isDirectFile =
+            (lower.endsWith(".zip") ||
+              lower.endsWith(".rar") ||
+              lower.endsWith(".7z") ||
+              lower.endsWith(".tar") ||
+              lower.endsWith(".gz") ||
+              lower.endsWith(".iso") ||
+              lower.endsWith(".exe") ||
+              lower.endsWith(".msi") ||
+              lower.endsWith(".pdf") ||
+              lower.endsWith(".dmg")) &&
+            !targetQuality;
+
+          if (isDirectFile) {
+            handleAddDirectDownloadRef.current(
+              clean,
+              defaultDirRef.current,
+              targetFilename,
+              16
+            );
+          } else {
+            const isAudio = targetQuality.toLowerCase().includes("audio");
+            let videoStreamId = "bv*";
+            if (targetQuality.includes("1080")) {
+              videoStreamId = "bv*[height<=1080]";
+            } else if (targetQuality.includes("720")) {
+              videoStreamId = "bv*[height<=720]";
+            } else if (targetQuality.includes("480")) {
+              videoStreamId = "bv*[height<=480]";
+            } else if (targetQuality.includes("360")) {
+              videoStreamId = "bv*[height<=360]";
+            } else if (targetQuality.includes("240")) {
+              videoStreamId = "bv*[height<=240]";
+            } else if (targetQuality.includes("144")) {
+              videoStreamId = "bv*[height<=144]";
+            }
+
+            handleAddMediaDownloadRef.current({
+              url: clean,
+              saveFolder: defaultDirRef.current,
+              customFilename: targetFilename || undefined,
+              downloadMode: isAudio ? "audio" : "video",
+              container: isAudio ? "MP3 (Audio)" : "MP4 (Video)",
+              videoStreamId: isAudio ? "" : videoStreamId,
+              audioStreamId: "ba",
+              audioBitrate: "Best",
+              enableSubtitles: false,
+              subtitleLang: "en",
+              subtitleFormat: "srt",
+              subtitleSaveMode: "separate",
+              enableClip: false,
+              startTime: "",
+              endTime: "",
+              preciseCut: false,
+              maxActiveDownloads: 3,
+              overwriteFiles: false,
+              includeMediaId: false,
+              includeAutoSubtitles: false,
+              includeSuperRes: false,
+              preferredVideoCodec: "default",
+              preferredAudioCodec: "default",
+              preferredSubtitleFormat: "default",
+              preferredFps: "default",
+              usePartFiles: true,
+              concurrentConnections: 8,
+            });
+          }
+        } else {
+          setModalInitialUrl(clean);
+          setModalInitialFilename(targetFilename.trim());
+          setIsAddModalOpen(true);
+        }
       }
     };
     const unlistenOpenUrl = listen<any>("open-url", handleOpenUrl);
@@ -404,6 +489,12 @@ export const App: React.FC = () => {
       console.error("Media download failed to start:", e);
     }
   };
+
+  useEffect(() => {
+    handleAddDirectDownloadRef.current = handleAddDirectDownload;
+    handleAddMediaDownloadRef.current = handleAddMediaDownload;
+    defaultDirRef.current = defaultDir;
+  });
 
   // Category counts
   const categoryCounts = useMemo(() => {

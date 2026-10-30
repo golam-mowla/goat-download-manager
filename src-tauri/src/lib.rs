@@ -265,6 +265,8 @@ async fn start_local_bridge(app_handle: AppHandle) {
 
                     let mut target_url = None;
                     let mut target_filename = None;
+                    let mut target_quality = None;
+                    let mut auto_start = false;
                     if let Some(idx) = req_str.find("/open?") {
                         let query_str = &req_str[idx + 6..];
                         let end_idx = query_str.find(|c: char| c == ' ' || c == '\r' || c == '\n').unwrap_or(query_str.len());
@@ -275,6 +277,10 @@ async fn start_local_bridge(app_handle: AppHandle) {
                                 target_url = Some(decode_percent_encoded(&part[4..]));
                             } else if part.starts_with("filename=") {
                                 target_filename = Some(decode_percent_encoded(&part[9..]));
+                            } else if part.starts_with("quality=") {
+                                target_quality = Some(decode_percent_encoded(&part[8..]));
+                            } else if part.starts_with("autostart=") {
+                                auto_start = &part[10..] == "true" || &part[10..] == "1";
                             }
                         }
                     }
@@ -284,7 +290,9 @@ async fn start_local_bridge(app_handle: AppHandle) {
                         if !clean.is_empty() {
                             let payload = serde_json::json!({
                                 "url": clean,
-                                "filename": target_filename
+                                "filename": target_filename,
+                                "quality": target_quality,
+                                "autoStart": auto_start
                             });
                             let _ = handle.emit("open-url", payload.clone());
                             let _ = handle.emit("gdm://open-url", payload);
@@ -378,7 +386,8 @@ async fn ytdlp_download(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut pending_arg_url = None;
+    let mut pending_arg_req: Option<String> = None;
+    let mut pending_arg_url: Option<String> = None;
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
         for arg in &args[1..] {
@@ -391,34 +400,38 @@ pub fn run() {
                 } else {
                     &trimmed["gmdownloader://".len()..]
                 };
-                let mut extracted = without_proto;
-                if let Some(pos) = extracted.find("open?url=") {
-                    extracted = &extracted[pos + 9..];
-                } else if let Some(pos) = extracted.find("?url=") {
-                    extracted = &extracted[pos + 5..];
-                }
-                let dec = decode_percent_encoded(extracted);
-                if !dec.trim().is_empty() {
-                    pending_arg_url = Some(dec.trim().to_string());
+                if let Some(pos) = without_proto.find("open?") {
+                    pending_arg_req = Some(without_proto[pos..].to_string());
+                    let query = &without_proto[pos + 5..];
+                    for part in query.split('&') {
+                        if part.starts_with("url=") {
+                            pending_arg_url = Some(decode_percent_encoded(&part[4..]));
+                        }
+                    }
+                    break;
+                } else if let Some(pos) = without_proto.find("?url=") {
+                    pending_arg_req = Some(format!("open{}", &without_proto[pos..]));
+                    pending_arg_url = Some(decode_percent_encoded(&without_proto[pos + 5..]));
                     break;
                 }
             } else if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+                pending_arg_req = Some(format!("open?url={}", trimmed));
                 pending_arg_url = Some(trimmed.to_string());
                 break;
             }
         }
     }
 
-    if let Some(ref url) = pending_arg_url {
+    if let Some(ref req_path) = pending_arg_req {
         if let Ok(addr) = "127.0.0.1:9666".parse() {
             if let Ok(mut stream) = std::net::TcpStream::connect_timeout(
                 &addr,
-                std::time::Duration::from_millis(300),
+                std::time::Duration::from_millis(350),
             ) {
                 use std::io::Write;
                 let req = format!(
-                    "GET /open?url={} HTTP/1.1\r\nHost: 127.0.0.1:9666\r\nConnection: close\r\n\r\n",
-                    url
+                    "GET /{} HTTP/1.1\r\nHost: 127.0.0.1:9666\r\nConnection: close\r\n\r\n",
+                    req_path
                 );
                 let _ = stream.write_all(req.as_bytes());
                 std::process::exit(0);

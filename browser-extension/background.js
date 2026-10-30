@@ -1,4 +1,5 @@
 // Goat Download Manager (GDM) - Background Service Worker (Manifest V3)
+// IDM-Style High-Speed Interception & Passive Media Stream Sniffer
 
 const GDM_BRIDGE_PORT = 9666;
 const GDM_BRIDGE_URL = `http://127.0.0.1:${GDM_BRIDGE_PORT}`;
@@ -19,6 +20,106 @@ const INTERCEPT_EXTENSIONS = new Set([
 
 // Keep track of downloads we are actively intercepting to avoid loops
 const interceptedDownloadIds = new Set();
+
+// Passive media stream sniffer cache: tabId -> Map(streamUrl -> streamInfo)
+const tabMediaStreams = new Map();
+
+// Helper to format human byte size
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return "";
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
+  return `${mb.toFixed(1)} MB`;
+}
+
+// ---------------------------------------------------------------------------
+// 1. Passive Media Stream Sniffing (IDM method: listens to HTTP response headers)
+// ---------------------------------------------------------------------------
+if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
+  chrome.webRequest.onHeadersReceived.addListener(
+    (details) => {
+      try {
+        if (!details.url || !details.responseHeaders) return;
+        const tabId = details.tabId;
+        if (tabId < 0) return;
+
+        let contentType = "";
+        let contentLength = 0;
+
+        for (const h of details.responseHeaders) {
+          const name = h.name.toLowerCase();
+          if (name === "content-type") contentType = h.value.toLowerCase();
+          if (name === "content-length") contentLength = parseInt(h.value, 10) || 0;
+        }
+
+        const urlLower = details.url.toLowerCase();
+        const isMediaMime =
+          contentType.startsWith("video/") ||
+          contentType.startsWith("audio/") ||
+          contentType.includes("application/x-mpegurl") ||
+          contentType.includes("application/vnd.apple.mpegurl") ||
+          contentType.includes("application/dash+xml");
+
+        const isMediaExt =
+          urlLower.includes(".mp4") ||
+          urlLower.includes(".mkv") ||
+          urlLower.includes(".webm") ||
+          urlLower.includes(".m3u8") ||
+          urlLower.includes(".m4s") ||
+          urlLower.includes("videoplayback");
+
+        if (isMediaMime || isMediaExt) {
+          if (!tabMediaStreams.has(tabId)) {
+            tabMediaStreams.set(tabId, new Map());
+          }
+          const streams = tabMediaStreams.get(tabId);
+          if (!streams.has(details.url)) {
+            let quality = "";
+            // Detect resolution from YouTube videoplayback itags or url params
+            if (urlLower.includes("itag=137") || urlLower.includes("itag=399")) quality = "1080p HD";
+            else if (urlLower.includes("itag=22") || urlLower.includes("itag=136") || urlLower.includes("itag=298")) quality = "720p HD";
+            else if (urlLower.includes("itag=135") || urlLower.includes("itag=244")) quality = "480p";
+            else if (urlLower.includes("itag=18") || urlLower.includes("itag=134")) quality = "360p";
+            else if (urlLower.includes("itag=140") || urlLower.includes("mime=audio")) quality = "Audio Only";
+            else if (urlLower.includes("1080")) quality = "1080p HD";
+            else if (urlLower.includes("720")) quality = "720p HD";
+            else if (urlLower.includes("480")) quality = "480p";
+
+            const streamInfo = {
+              url: details.url,
+              contentType,
+              contentLength,
+              sizeFormatted: formatBytes(contentLength),
+              quality,
+              timestamp: Date.now(),
+            };
+            streams.set(details.url, streamInfo);
+
+            // Notify content script on the tab
+            chrome.tabs.sendMessage(tabId, {
+              action: "MEDIA_SNIFFED",
+              stream: streamInfo,
+            }).catch(() => {});
+          }
+        }
+      } catch (e) {}
+    },
+    { urls: ["<all_urls>"] },
+    ["responseHeaders"]
+  );
+}
+
+// Clean up tab streams when tab is closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+  tabMediaStreams.delete(tabId);
+});
+
+// Clean up on tab navigation / reload
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading") {
+    tabMediaStreams.delete(tabId);
+  }
+});
 
 // Create Context Menu on installation
 chrome.runtime.onInstalled.addListener(() => {
@@ -78,7 +179,7 @@ async function handleDownloadInterception(downloadItem, suggest) {
 
       // Forward to GDM Desktop Engine
       const cleanFilename = downloadItem.filename ? downloadItem.filename.replace(/^.*[\\\/]/, "") : "";
-      await sendUrlToGdm(rawUrl, null, cleanFilename);
+      await sendUrlToGdm(rawUrl, null, cleanFilename, null, false);
       return true;
     }
   } catch (err) {
@@ -109,7 +210,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "download-with-gdm" || info.menuItemId === "download-with-parrot") {
     let candidateUrl = "";
 
-    // 1. Ask content script for detected element URL (e.g. Instagram reel, video, card)
+    // 1. Ask content script for detected element URL
     if (tab && tab.id) {
       try {
         const resp = await chrome.tabs.sendMessage(tab.id, {
@@ -121,7 +222,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       } catch (e) {}
     }
 
-    // 2. Fallbacks from contextMenus info (strictly ignore blob/data URLs)
+    // 2. Fallbacks from contextMenus info
     const isClean = (u) =>
       u &&
       typeof u === "string" &&
@@ -156,7 +257,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 // Send URL to GDM Desktop App
-async function sendUrlToGdm(mediaUrl, tabId, customFilename) {
+async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart = false) {
   let cleanUrl = (mediaUrl || "").trim();
   if (!cleanUrl) return;
 
@@ -177,7 +278,7 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename) {
       await chrome.tabs.sendMessage(effectiveTabId, {
         action: "SHOW_TOAST",
         title: "Goat Download Manager 🐐",
-        message: "Sending link to GDM engine...",
+        message: quality ? `Sending ${quality} stream to GDM Engine...` : "Sending link to GDM engine...",
         status: "info",
       });
     } catch {}
@@ -186,10 +287,12 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename) {
   // 1. Try sending to local bridge HTTP server (if app is running)
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const timeoutId = setTimeout(() => controller.abort(), 1400);
 
     const filenameParam = customFilename ? `&filename=${encodeURIComponent(customFilename)}` : "";
-    const bridgeEndpoint = `${GDM_BRIDGE_URL}/open?url=${encodeURIComponent(cleanUrl)}${filenameParam}`;
+    const qualityParam = quality ? `&quality=${encodeURIComponent(quality)}` : "";
+    const autoParam = autoStart ? `&autostart=true` : "";
+    const bridgeEndpoint = `${GDM_BRIDGE_URL}/open?url=${encodeURIComponent(cleanUrl)}${filenameParam}${qualityParam}${autoParam}`;
     const resp = await fetch(bridgeEndpoint, {
       method: "GET",
       signal: controller.signal,
@@ -202,7 +305,7 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename) {
           await chrome.tabs.sendMessage(effectiveTabId, {
             action: "SHOW_TOAST",
             title: "Goat Download Manager 🐐",
-            message: "Link sent to GDM! Download starting...",
+            message: quality ? `${quality} Download started in GDM!` : "Link sent to GDM! Download starting...",
             status: "success",
           });
         } catch {}
@@ -213,8 +316,11 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename) {
     // Local bridge not active (app might be closed or starting)
   }
 
-  // 2. Launch GDM via custom Windows protocol (support gdm:// and parrot://)
-  const protocolUrl = `gdm://open?url=${encodeURIComponent(cleanUrl)}`;
+  // 2. Launch GDM via custom Windows protocol
+  const filenameParam = customFilename ? `&filename=${encodeURIComponent(customFilename)}` : "";
+  const qualityParam = quality ? `&quality=${encodeURIComponent(quality)}` : "";
+  const autoParam = autoStart ? `&autostart=true` : "";
+  const protocolUrl = `gdm://open?url=${encodeURIComponent(cleanUrl)}${filenameParam}${qualityParam}${autoParam}`;
 
   if (effectiveTabId) {
     try {
@@ -257,7 +363,16 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "SEND_TO_PARROT" || request.action === "SEND_TO_GDM") {
     const tabId = sender && sender.tab ? sender.tab.id : null;
-    sendUrlToGdm(request.url, tabId, request.filename).then((res) => sendResponse(res));
+    sendUrlToGdm(request.url, tabId, request.filename, request.quality, Boolean(request.autoStart)).then((res) => sendResponse(res));
+    return true;
+  }
+
+  if (request.action === "GET_SNIFFED_MEDIA") {
+    const tabId = sender && sender.tab ? sender.tab.id : null;
+    const streams = tabId && tabMediaStreams.has(tabId)
+      ? Array.from(tabMediaStreams.get(tabId).values())
+      : [];
+    sendResponse({ streams });
     return true;
   }
 

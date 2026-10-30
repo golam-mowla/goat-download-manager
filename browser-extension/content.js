@@ -1,9 +1,15 @@
 // Goat Download Manager (GDM) - IDM-Style Video & Media Overlay Grabber
-// Seamless video detection across YouTube, Facebook, Kick, Twitch, TikTok, Instagram, Twitter, and ANY HTML5 video website.
+// Seamless video detection across YouTube, Instagram, Facebook, Kick, Twitch, TikTok, Twitter, and ANY HTML5 video website.
 
 (() => {
   let lastRightClickedElement = null;
   let lastDetectedMediaUrl = null;
+  let activeGrabberButton = null;
+  let activeDropdown = null;
+  let currentTargetVideo = null;
+  let currentTargetContainer = null;
+  let hideTimer = null;
+  let isPermanentlyDismissed = false;
 
   function isValidDownloadUrl(url) {
     if (!url || typeof url !== "string") return false;
@@ -29,6 +35,14 @@
       lastRightClickedElement = e.target;
       lastDetectedMediaUrl = extractMediaTarget(e.target).url;
     }
+    // Dismiss dropdown when clicking outside
+    if (
+      activeDropdown &&
+      !activeDropdown.contains(e.target) &&
+      (!activeGrabberButton || !activeGrabberButton.contains(e.target))
+    ) {
+      hideDropdown();
+    }
   }, true);
 
   // Extract clean target URL and best human filename/title
@@ -38,21 +52,116 @@
 
     // 1. YouTube
     if (hostname.includes("youtube.com") || hostname.includes("youtu.be")) {
-      const ytTitle = document.querySelector("h1.ytd-watch-metadata yt-formatted-string, #title h1, h1.title");
+      // Check if hovering over a feed item / card in YouTube home feed or channel
+      const card = element?.closest?.(
+        "ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer"
+      );
+      if (card) {
+        const titleEl = card.querySelector("#video-title, #video-title-link");
+        const linkEl = card.querySelector("a#thumbnail, a#video-title-link");
+        const cardTitle =
+          titleEl?.innerText?.trim() || titleEl?.getAttribute("title") || "";
+        const cardUrl = linkEl?.href || window.location.href;
+        if (cardTitle && cardUrl) {
+          return {
+            url: cardUrl,
+            title: cardTitle,
+            videoEl: card.querySelector("video"),
+          };
+        }
+      }
+
+      const ytTitle = document.querySelector(
+        "h1.ytd-watch-metadata yt-formatted-string, #title h1, h1.title"
+      );
       if (ytTitle && ytTitle.innerText) {
         title = ytTitle.innerText.trim();
       } else {
         title = document.title.replace(/ - YouTube$/, "").trim();
       }
-      return { url: window.location.href, title };
+      return {
+        url: window.location.href,
+        title,
+        videoEl:
+          element?.tagName === "VIDEO"
+            ? element
+            : element?.querySelector?.("video") || document.querySelector("video"),
+      };
     }
 
-    // 2. Popular Social & Video platforms natively supported by yt-dlp
+    // 2. Instagram (Reels, Stories, and Home Feed Articles)
+    if (hostname.includes("instagram.com")) {
+      let postArticle = element
+        ? element.closest("article") || element.closest("div[role='dialog']")
+        : null;
+      if (!postArticle) {
+        postArticle =
+          document.querySelector("article:hover, div[role='dialog']:hover") ||
+          document.querySelector("article");
+      }
+
+      let postUrl = window.location.href;
+      let postTitle = "";
+
+      if (postArticle) {
+        // Find permalink
+        const postLink = postArticle.querySelector(
+          "a[href*='/p/'], a[href*='/reel/']"
+        );
+        if (postLink && postLink.href) {
+          postUrl = postLink.href;
+        }
+
+        // Find post caption
+        const captionEl = postArticle.querySelector(
+          "span._ap3a, div._a9zs, span[dir='auto'], h1, h2"
+        );
+        if (
+          captionEl &&
+          captionEl.innerText &&
+          captionEl.innerText.trim().length > 3
+        ) {
+          postTitle = captionEl.innerText.trim().replace(/\r?\n+/g, " ");
+        } else {
+          const authorEl = postArticle.querySelector("header a, a[role='link']");
+          if (authorEl && authorEl.innerText) {
+            postTitle = `Instagram video by ${authorEl.innerText.trim()}`;
+          }
+        }
+      }
+
+      if (!postTitle) {
+        postTitle =
+          document.title
+            .replace(/ • Instagram photos and videos$/, "")
+            .replace(/ \| Instagram$/, "")
+            .trim() || "Instagram Video";
+      }
+
+      const vid =
+        element?.tagName === "VIDEO" ? element : element?.querySelector?.("video");
+      if (vid && vid.currentSrc && isValidDownloadUrl(vid.currentSrc)) {
+        return {
+          url: vid.currentSrc,
+          title: postTitle,
+          postUrl,
+          videoEl: vid,
+        };
+      }
+
+      return {
+        url: postUrl,
+        title: postTitle,
+        postUrl,
+        videoEl: vid,
+      };
+    }
+
+    // 3. Popular Social & Video platforms natively supported by yt-dlp
     if (
       hostname.includes("kick.com") ||
       hostname.includes("twitch.tv") ||
       hostname.includes("tiktok.com") ||
-      hostname.includes("instagram.com") ||
       hostname.includes("facebook.com") ||
       hostname.includes("fb.watch") ||
       hostname.includes("twitter.com") ||
@@ -69,10 +178,17 @@
         .replace(/ \/ X$/, "")
         .replace(/ \| Facebook$/, "")
         .trim();
-      return { url: window.location.href, title };
+      return {
+        url: window.location.href,
+        title,
+        videoEl:
+          element?.tagName === "VIDEO"
+            ? element
+            : element?.querySelector?.("video"),
+      };
     }
 
-    // 3. Direct HTML5 Video Element check
+    // 4. Direct HTML5 Video Element check
     if (element) {
       let vid = null;
       if (element.tagName === "VIDEO") {
@@ -83,37 +199,267 @@
 
       if (vid) {
         if (vid.currentSrc && isValidDownloadUrl(vid.currentSrc)) {
-          return { url: vid.currentSrc, title };
+          return { url: vid.currentSrc, title, videoEl: vid };
         }
         if (vid.src && isValidDownloadUrl(vid.src)) {
-          return { url: vid.src, title };
+          return { url: vid.src, title, videoEl: vid };
         }
         const source = vid.querySelector("source");
         if (source && source.src && isValidDownloadUrl(source.src)) {
-          return { url: source.src, title };
+          return { url: source.src, title, videoEl: vid };
         }
       }
     }
 
-    // 4. Anchor links
+    // 5. Anchor links
     const anchor = element?.closest?.("a");
     if (anchor && anchor.href && isValidDownloadUrl(anchor.href)) {
-      return { url: anchor.href, title: anchor.innerText?.trim() || title };
+      return {
+        url: anchor.href,
+        title: anchor.innerText?.trim() || title,
+        videoEl: null,
+      };
     }
 
-    // 5. Fallback to current Page URL (yt-dlp supports over 1800+ streaming sites)
-    return { url: window.location.href, title };
+    // 6. Fallback to current Page URL
+    return {
+      url: window.location.href,
+      title,
+      videoEl:
+        element?.tagName === "VIDEO"
+          ? element
+          : element?.querySelector?.("video"),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // IDM-Style Format Dropdown Menu
+  // ---------------------------------------------------------------------------
+  function hideDropdown() {
+    if (activeDropdown) {
+      activeDropdown.remove();
+      activeDropdown = null;
+    }
+  }
+
+  async function showFormatDropdown(anchorBtn, mediaTarget) {
+    if (activeDropdown) {
+      hideDropdown();
+      return;
+    }
+
+    let sniffedStreams = [];
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        action: "GET_SNIFFED_MEDIA",
+      });
+      if (resp && Array.isArray(resp.streams)) {
+        sniffedStreams = resp.streams;
+      }
+    } catch (e) {}
+
+    const title = mediaTarget.title || "Video";
+    const hostname = window.location.hostname;
+    const vid = mediaTarget.videoEl || currentTargetVideo;
+    let durationSec = 0;
+    if (vid && vid.duration && !isNaN(vid.duration) && isFinite(vid.duration)) {
+      durationSec = Math.round(vid.duration);
+    }
+    const durStr = durationSec > 0 ? `${durationSec} sec, ` : "";
+
+    const options = [];
+
+    // 1. YouTube
+    if (hostname.includes("youtube.com") || hostname.includes("youtu.be")) {
+      options.push(
+        { label: `${title}, MP4 file, quality 1080p HD`, quality: "1080p HD", url: mediaTarget.url },
+        { label: `${title}, MP4 file, quality 720p HD`, quality: "720p HD", url: mediaTarget.url },
+        { label: `${title}, MP4 file, quality 480p`, quality: "480p", url: mediaTarget.url },
+        { label: `${title}, MP4 file, quality 360p`, quality: "360p", url: mediaTarget.url },
+        { label: `${title}, MP4 file, quality 240p`, quality: "240p", url: mediaTarget.url },
+        { label: `${title}, MP4 file, quality 144p`, quality: "144p", url: mediaTarget.url },
+        { label: `${title}, MP3 Audio, Highest Quality`, quality: "Audio", url: mediaTarget.url }
+      );
+    } else if (hostname.includes("instagram.com")) {
+      // 2. Instagram (Reels & Feed)
+      const cleanTitle = title.length > 36 ? title.slice(0, 36) + "..." : title;
+
+      if (sniffedStreams.length > 0) {
+        sniffedStreams.forEach((st, idx) => {
+          const q =
+            st.quality || (idx === 0 ? "1080p HD" : idx === 1 ? "720p HD" : "480p");
+          const sizeInfo = st.sizeFormatted ? ` (${st.sizeFormatted})` : "";
+          options.push({
+            label: `${cleanTitle} MP4 file, ${durStr}quality ${q}${sizeInfo}`,
+            quality: q,
+            url: st.url || mediaTarget.url,
+          });
+        });
+      }
+
+      if (options.length === 0) {
+        options.push(
+          { label: `${cleanTitle} MP4 file, ${durStr}quality 1080p HD`, quality: "1080p HD", url: mediaTarget.url },
+          { label: `${cleanTitle} MP4 file, ${durStr}quality 960p HD`, quality: "960p HD", url: mediaTarget.url },
+          { label: `${cleanTitle} MP4 file, ${durStr}quality 720p HD`, quality: "720p HD", url: mediaTarget.url },
+          { label: `${cleanTitle} MP4 file, ${durStr}quality 480p`, quality: "480p", url: mediaTarget.url },
+          { label: `${cleanTitle} MP3 Audio, Original Audio`, quality: "Audio", url: mediaTarget.url }
+        );
+      }
+    } else {
+      // 3. Any other website
+      const cleanTitle = title.length > 40 ? title.slice(0, 40) + "..." : title;
+
+      if (sniffedStreams.length > 0) {
+        sniffedStreams.forEach((st) => {
+          const q = st.quality || "HD Video";
+          const sizeInfo = st.sizeFormatted ? ` (${st.sizeFormatted})` : "";
+          options.push({
+            label: `${cleanTitle}, MP4 file, ${durStr}quality ${q}${sizeInfo}`,
+            quality: q,
+            url: st.url || mediaTarget.url,
+          });
+        });
+      }
+
+      if (options.length === 0) {
+        options.push(
+          { label: `${cleanTitle}, MP4 file, Best Available HD Quality`, quality: "Best", url: mediaTarget.url },
+          { label: `${cleanTitle}, MP4 file, quality 1080p HD`, quality: "1080p HD", url: mediaTarget.url },
+          { label: `${cleanTitle}, MP4 file, quality 720p HD`, quality: "720p HD", url: mediaTarget.url },
+          { label: `${cleanTitle}, MP4 file, quality 480p`, quality: "480p", url: mediaTarget.url },
+          { label: `${cleanTitle}, MP3 Audio`, quality: "Audio", url: mediaTarget.url }
+        );
+      }
+    }
+
+    // Create dropdown container
+    const dropdown = document.createElement("div");
+    dropdown.id = "gdm-format-dropdown";
+    Object.assign(dropdown.style, {
+      position: "fixed",
+      zIndex: "2147483647",
+      background: "#ffffff",
+      border: "1px solid #717171",
+      boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
+      borderRadius: "2px",
+      minWidth: "340px",
+      maxWidth: "540px",
+      fontFamily: 'Tahoma, "Segoe UI", Arial, sans-serif',
+      fontSize: "12px",
+      color: "#0f172a",
+      direction: "ltr",
+      userSelect: "none",
+      overflow: "hidden",
+    });
+
+    // Top Header: "Download all"
+    const header = document.createElement("div");
+    header.innerText = "Download all";
+    Object.assign(header.style, {
+      padding: "6px 12px",
+      fontWeight: "700",
+      fontSize: "12px",
+      color: "#1e293b",
+      background: "#f1f5f9",
+      borderBottom: "1px solid #cbd5e1",
+      cursor: "pointer",
+    });
+    header.addEventListener("mouseenter", () => {
+      header.style.background = "#e2e8f0";
+    });
+    header.addEventListener("mouseleave", () => {
+      header.style.background = "#f1f5f9";
+    });
+    header.addEventListener("click", (e) => {
+      e.stopPropagation();
+      hideDropdown();
+      showToast(
+        "Goat Download Manager 🐐",
+        `Starting Best Quality download in GDM...`,
+        "success"
+      );
+      chrome.runtime.sendMessage({
+        action: "SEND_TO_GDM",
+        url: mediaTarget.url,
+        filename: mediaTarget.title,
+        quality: "Best",
+        autoStart: true,
+      });
+    });
+    dropdown.appendChild(header);
+
+    // Format list
+    const list = document.createElement("div");
+    list.style.maxHeight = "360px";
+    list.style.overflowY = "auto";
+
+    options.forEach((opt, idx) => {
+      const item = document.createElement("div");
+      item.innerText = `${idx + 1}. ${opt.label}`;
+      item.title = opt.label;
+      Object.assign(item.style, {
+        padding: "5px 12px",
+        fontSize: "11.5px",
+        color: "#0f172a",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        borderBottom: "1px solid #f1f5f9",
+        transition: "background 0.08s ease, color 0.08s ease",
+      });
+
+      item.addEventListener("mouseenter", () => {
+        item.style.background = "#2563eb";
+        item.style.color = "#ffffff";
+      });
+      item.addEventListener("mouseleave", () => {
+        item.style.background = "transparent";
+        item.style.color = "#0f172a";
+      });
+
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        hideDropdown();
+        if (activeGrabberButton) {
+          activeGrabberButton.style.display = "none";
+        }
+        showToast(
+          "Goat Download Manager 🐐",
+          `Starting ${opt.quality} download in GDM...`,
+          "success"
+        );
+        chrome.runtime.sendMessage({
+          action: "SEND_TO_GDM",
+          url: opt.url || mediaTarget.url,
+          filename: mediaTarget.title,
+          quality: opt.quality,
+          autoStart: true,
+        });
+      });
+
+      list.appendChild(item);
+    });
+
+    dropdown.appendChild(list);
+
+    // Position directly beneath the grabber button
+    const btnRect = anchorBtn.getBoundingClientRect();
+    const top = Math.min(window.innerHeight - 200, btnRect.bottom + 2);
+    const right = Math.max(8, window.innerWidth - btnRect.right);
+
+    dropdown.style.top = `${top}px`;
+    dropdown.style.right = `${right}px`;
+
+    document.body.appendChild(dropdown);
+    activeDropdown = dropdown;
   }
 
   // ---------------------------------------------------------------------------
   // IDM-Style Floating Video Grabber Overlay
   // ---------------------------------------------------------------------------
-  let activeGrabberButton = null;
-  let currentTargetVideo = null;
-  let currentTargetContainer = null;
-  let hideTimer = null;
-  let isPermanentlyDismissed = false;
-
   function ensureGrabberContainer() {
     const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
     if (fsEl) {
@@ -170,13 +516,15 @@
       clearTimeout(hideTimer);
       btn.style.transform = "scale(1.02)";
       btn.style.borderColor = "#2563eb";
-      btn.style.boxShadow = "0 3px 12px rgba(37,99,235,0.45), inset 0 1px 0 #ffffff";
+      btn.style.boxShadow =
+        "0 3px 12px rgba(37,99,235,0.45), inset 0 1px 0 #ffffff";
     });
 
     btn.addEventListener("mouseleave", () => {
       btn.style.transform = "scale(1)";
       btn.style.borderColor = "#64748b";
-      btn.style.boxShadow = "0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.9)";
+      btn.style.boxShadow =
+        "0 2px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.9)";
       scheduleHide();
     });
 
@@ -185,32 +533,32 @@
       if (target && target.id === "gdm-close-btn") {
         e.stopPropagation();
         e.preventDefault();
+        hideDropdown();
         btn.style.display = "none";
         isPermanentlyDismissed = true;
-        setTimeout(() => { isPermanentlyDismissed = false; }, 8000); // Re-enable after 8s
+        setTimeout(() => {
+          isPermanentlyDismissed = false;
+        }, 8000);
         return;
       }
       if (target && target.id === "gdm-help-btn") {
         e.stopPropagation();
         e.preventDefault();
-        showToast("Goat Download Manager 🐐", "GDM High-Speed HTTP & Media Extractor", "info");
+        showToast(
+          "Goat Download Manager 🐐",
+          "GDM High-Speed HTTP & Media Extractor",
+          "info"
+        );
         return;
       }
 
       e.stopPropagation();
       e.preventDefault();
 
-      const mediaTarget = extractMediaTarget(currentTargetVideo || currentTargetContainer);
-
-      showToast("Goat Download Manager 🐐", `Sending "${mediaTarget.title.slice(0, 40)}..." to GDM Engine!`, "info");
-      chrome.runtime.sendMessage({
-        action: "SEND_TO_GDM",
-        url: mediaTarget.url,
-        filename: mediaTarget.title,
-      });
-
-      btn.style.opacity = "0";
-      setTimeout(() => { btn.style.display = "none"; }, 200);
+      const mediaTarget = extractMediaTarget(
+        currentTargetVideo || currentTargetContainer
+      );
+      showFormatDropdown(btn, mediaTarget);
     });
 
     document.body.appendChild(btn);
@@ -220,16 +568,21 @@
   function scheduleHide() {
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
+      if (activeDropdown) return; // Never hide grabber if dropdown is actively open!
       if (activeGrabberButton && !activeGrabberButton.matches(":hover")) {
         activeGrabberButton.style.opacity = "0";
         activeGrabberButton.style.pointerEvents = "none";
         setTimeout(() => {
-          if (activeGrabberButton && activeGrabberButton.style.opacity === "0") {
+          if (
+            activeGrabberButton &&
+            activeGrabberButton.style.opacity === "0" &&
+            !activeDropdown
+          ) {
             activeGrabberButton.style.display = "none";
           }
         }, 200);
       }
-    }, 1200);
+    }, 1400);
   }
 
   function positionGrabber(video, container) {
@@ -253,8 +606,14 @@
       activeGrabberButton.style.right = "18px";
     } else {
       activeGrabberButton.style.position = "fixed";
-      const top = Math.max(12, Math.min(window.innerHeight - 50, rect.top + 10));
-      const right = Math.max(12, Math.min(window.innerWidth - 180, window.innerWidth - rect.right + 10));
+      const top = Math.max(
+        12,
+        Math.min(window.innerHeight - 50, rect.top + 10)
+      );
+      const right = Math.max(
+        12,
+        Math.min(window.innerWidth - 180, window.innerWidth - rect.right + 10)
+      );
 
       activeGrabberButton.style.top = `${top}px`;
       activeGrabberButton.style.right = `${right}px`;
@@ -266,27 +625,37 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Global Detection & Hover Logic (Works everywhere including YouTube overlays)
+  // Global Detection & Hover Logic (Supports YouTube, Instagram feed & all sites)
   // ---------------------------------------------------------------------------
   let lastCheckTime = 0;
 
   function handleGlobalPointerMove(e) {
     const now = Date.now();
-    if (now - lastCheckTime < 45) return; // ~22fps throttle for zero-lag
+    if (now - lastCheckTime < 45) return; // ~22fps throttle for zero-lag performance
     lastCheckTime = now;
 
     const x = e.clientX;
     const y = e.clientY;
 
-    // 1. If pointer is over the IDM grabber button itself, do not hide
+    // 1. If pointer is over the IDM grabber or dropdown menu, keep open
     if (activeGrabberButton && activeGrabberButton.style.display !== "none") {
       const btnRect = activeGrabberButton.getBoundingClientRect();
-      if (
+      const dropRect = activeDropdown ? activeDropdown.getBoundingClientRect() : null;
+
+      const overBtn =
         x >= btnRect.left - 20 &&
         x <= btnRect.right + 20 &&
         y >= btnRect.top - 20 &&
-        y <= btnRect.bottom + 20
-      ) {
+        y <= btnRect.bottom + 20;
+
+      const overDrop =
+        dropRect &&
+        x >= dropRect.left - 10 &&
+        x <= dropRect.right + 10 &&
+        y >= dropRect.top - 10 &&
+        y <= dropRect.bottom + 10;
+
+      if (overBtn || overDrop) {
         clearTimeout(hideTimer);
         return;
       }
@@ -312,7 +681,28 @@
       }
     }
 
-    // 3. Scan all HTML5 video elements across any website
+    // 3. Instagram Feed & Reels Special Fast-Path
+    const instagramArticles = document.querySelectorAll(
+      "article, div[role='dialog']"
+    );
+    for (let i = 0; i < instagramArticles.length; i++) {
+      const art = instagramArticles[i];
+      const vid = art.querySelector("video");
+      if (!vid) continue;
+      const rect = art.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
+      if (
+        x >= rect.left &&
+        x <= rect.right &&
+        y >= rect.top &&
+        y <= rect.bottom
+      ) {
+        positionGrabber(vid, art);
+        return;
+      }
+    }
+
+    // 4. Scan all HTML5 video elements across any website
     const videos = document.querySelectorAll("video");
     let foundHovered = false;
 
@@ -322,12 +712,20 @@
       if (rect.width < 140 || rect.height < 90) continue;
 
       // Expand detection rectangle to common player wrappers
-      const parentContainer = vid.closest('[class*="player"], [id*="player"], [class*="video"], .video-js, .jwplayer, .plyr, figure') || vid.parentElement;
-      const containerRect = parentContainer ? parentContainer.getBoundingClientRect() : rect;
-
-      const testRect = (containerRect.width >= rect.width && containerRect.height >= rect.height && containerRect.width <= rect.width * 1.6)
-        ? containerRect
+      const parentContainer =
+        vid.closest(
+          '[class*="player"], [id*="player"], [class*="video"], .video-js, .jwplayer, .plyr, figure, article'
+        ) || vid.parentElement;
+      const containerRect = parentContainer
+        ? parentContainer.getBoundingClientRect()
         : rect;
+
+      const testRect =
+        containerRect.width >= rect.width &&
+        containerRect.height >= rect.height &&
+        containerRect.width <= rect.width * 1.6
+          ? containerRect
+          : rect;
 
       if (
         x >= testRect.left &&
@@ -351,15 +749,20 @@
   window.addEventListener("pointermove", handleGlobalPointerMove, { passive: true });
 
   // When ANY video starts playing on ANY website, show the grabber immediately
-  window.addEventListener("play", (e) => {
-    if (e.target && e.target.tagName === "VIDEO") {
-      const vid = e.target;
-      const parentContainer = vid.closest('#movie_player, [class*="player"], [id*="player"]') || vid.parentElement;
-      positionGrabber(vid, parentContainer);
-      // Auto-fade after 4s unless hovered
-      setTimeout(scheduleHide, 4000);
-    }
-  }, true);
+  window.addEventListener(
+    "play",
+    (e) => {
+      if (e.target && e.target.tagName === "VIDEO") {
+        const vid = e.target;
+        const parentContainer =
+          vid.closest('#movie_player, [class*="player"], [id*="player"], article') ||
+          vid.parentElement;
+        positionGrabber(vid, parentContainer);
+        setTimeout(scheduleHide, 4000);
+      }
+    },
+    true
+  );
 
   // Fullscreen support
   document.addEventListener("fullscreenchange", ensureGrabberContainer);
@@ -373,7 +776,9 @@
   // Message listener from background & popup
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "GET_LAST_CLICKED_MEDIA") {
-      const target = extractMediaTarget(currentTargetVideo || lastRightClickedElement);
+      const target = extractMediaTarget(
+        currentTargetVideo || lastRightClickedElement
+      );
       sendResponse({ url: target.url, title: target.title });
       return true;
     }
@@ -413,8 +818,10 @@
       background: "#0f172a",
       color: "#f8fafc",
       boxShadow: "0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.1)",
-      borderLeft: status === "success" ? "4px solid #10b981" : "4px solid #3b82f6",
-      fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
+      borderLeft:
+        status === "success" ? "4px solid #10b981" : "4px solid #3b82f6",
+      fontFamily:
+        "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
       fontSize: "12px",
       transition: "all 0.25s ease",
       opacity: "0",
