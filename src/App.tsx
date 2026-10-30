@@ -162,9 +162,22 @@ export const App: React.FC = () => {
     // 2. Download complete event
     const handleComplete = (event: { payload: any }) => {
       const completed = event.payload;
-      if (!completed || !completed.id) return;
+      const id = completed?.id || completed?.taskId;
+      if (!completed || !id) return;
       setTasks((prev) =>
-        prev.map((t) => (t.id === completed.id ? { ...t, ...completed, status: "completed" } : t))
+        prev.map((t) =>
+          t.id === id
+            ? {
+                ...t,
+                ...completed,
+                status: "completed",
+                total_bytes: completed.total_bytes || t.total_bytes || 0,
+                totalBytes: completed.total_bytes || t.totalBytes || 0,
+                downloaded_bytes: completed.downloaded_bytes || completed.total_bytes || t.downloaded_bytes || 0,
+                downloadedBytes: completed.downloaded_bytes || completed.total_bytes || t.downloadedBytes || 0,
+              }
+            : t
+        )
       );
     };
     const unlistenComplete = listen<any>("download-complete", handleComplete);
@@ -244,10 +257,14 @@ export const App: React.FC = () => {
 
   const handleResume = async (id: string) => {
     try {
-      await invoke("resume_http_download", { taskId: id });
       setTasks((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, status: "queued", error: undefined, error_message: undefined } : t))
+        prev.map((t) =>
+          t.id === id
+            ? { ...t, status: "downloading", error: undefined, errorMessage: undefined }
+            : t
+        )
       );
+      await invoke("resume_http_download", { taskId: id });
     } catch (err) {
       console.error("Resume failed:", err);
     }

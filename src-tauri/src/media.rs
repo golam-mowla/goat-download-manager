@@ -17,6 +17,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 pub struct DownloadState {
     pub active_pids: Arc<Mutex<HashMap<String, u32>>>,
     pub cancelled_tasks: Arc<Mutex<HashMap<String, bool>>>,
+    pub task_options: Arc<Mutex<HashMap<String, DownloadOptions>>>,
 }
 
 pub struct AppUrlState {
@@ -461,9 +462,59 @@ fn short_codec(c: &str) -> String {
     }
 }
 
+fn extract_json_size(v: &serde_json::Value) -> Option<u64> {
+    if let Some(n) = v.as_u64() {
+        if n > 0 {
+            return Some(n);
+        }
+    }
+    if let Some(f) = v.as_f64() {
+        if f > 0.0 {
+            return Some(f as u64);
+        }
+    }
+    if let Some(s) = v.as_str() {
+        if let Ok(n) = s.parse::<u64>() {
+            if n > 0 {
+                return Some(n);
+            }
+        }
+        if let Ok(f) = s.parse::<f64>() {
+            if f > 0.0 {
+                return Some(f as u64);
+            }
+        }
+    }
+    None
+}
+
+fn parse_human_size_to_bytes(s: &str) -> u64 {
+    let clean = s.trim().trim_start_matches('~').trim();
+    let num_part: String = clean.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    let unit_part: String = clean.chars().skip_while(|c| c.is_ascii_digit() || *c == '.').collect();
+
+    let val = match num_part.parse::<f64>() {
+        Ok(v) => v,
+        Err(_) => return 0,
+    };
+
+    let unit = unit_part.trim().to_lowercase();
+    if unit.starts_with("gib") || unit.starts_with("gb") {
+        (val * 1024.0 * 1024.0 * 1024.0) as u64
+    } else if unit.starts_with("mib") || unit.starts_with("mb") {
+        (val * 1024.0 * 1024.0) as u64
+    } else if unit.starts_with("kib") || unit.starts_with("kb") {
+        (val * 1024.0) as u64
+    } else if unit.starts_with('b') {
+        val as u64
+    } else {
+        0
+    }
+}
+
 fn format_bytes(bytes: u64) -> String {
     if bytes == 0 {
-        return "Size N/A".to_string();
+        return "Live / Dynamic".to_string();
     }
     let mib = bytes as f64 / (1024.0 * 1024.0);
     if mib >= 1024.0 {
@@ -666,10 +717,34 @@ pub async fn fetch_media_info(
 
                 let vcodec = f["vcodec"].as_str().unwrap_or("none");
                 let acodec = f["acodec"].as_str().unwrap_or("none");
-                let size = f["filesize"]
-                    .as_u64()
-                    .or_else(|| f["filesize_approx"].as_u64())
+                let mut size = extract_json_size(&f["filesize"])
+                    .or_else(|| extract_json_size(&f["filesize_approx"]))
                     .unwrap_or(0);
+
+                if size == 0 {
+                    if let Some(dur) = duration {
+                        if dur > 0.0 {
+                            let br = f["tbr"]
+                                .as_f64()
+                                .or_else(|| {
+                                    let v = f["vbr"].as_f64().unwrap_or(0.0);
+                                    let a = f["acodec"].as_str().map(|_| f["abr"].as_f64().unwrap_or(128.0)).unwrap_or(0.0);
+                                    if v + a > 0.0 { Some(v + a) } else { None }
+                                });
+                            if let Some(bitrate_kbps) = br {
+                                if bitrate_kbps > 0.0 {
+                                    size = ((bitrate_kbps * 1000.0 / 8.0) * dur) as u64;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if size == 0 {
+                    size = extract_json_size(&v["filesize"])
+                        .or_else(|| extract_json_size(&v["filesize_approx"]))
+                        .unwrap_or(0);
+                }
 
                 if vcodec != "none" {
                     let h = f["height"].as_u64().unwrap_or(0) as u32;
@@ -842,6 +917,7 @@ pub async fn start_download(
     let active_pids = state.active_pids.clone();
     let cancelled_tasks = state.cancelled_tasks.clone();
     cancelled_tasks.lock().unwrap().insert(task_id.clone(), false);
+    state.task_options.lock().unwrap().insert(task_id.clone(), options.clone());
 
     let tid = task_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -1274,6 +1350,8 @@ pub async fn start_download(
         }
 
         // Read stdout for progress lines
+        let mut last_total_bytes: u64 = 0;
+        let mut last_downloaded_bytes: u64 = 0;
         if let Some(so) = stdout {
             let reader = BufReader::new(so);
             for line in reader.lines().flatten() {
@@ -1292,6 +1370,25 @@ pub async fn start_download(
                     let after_tag = trimmed.trim_start_matches("[download]").trim();
                     let pct_part = after_tag.split('%').next().unwrap_or("0").trim();
                     let pct = pct_part.parse::<f64>().unwrap_or(0.0);
+
+                    // Parse total size: "[download]  45.2% of 84.60MiB at  6.42MiB/s ETA 00:06"
+                    if let Some(of_idx) = after_tag.find("of ") {
+                        let after_of = &after_tag[of_idx + 3..];
+                        let size_str = after_of.split_whitespace().next().unwrap_or("");
+                        let b = parse_human_size_to_bytes(size_str);
+                        if b > 0 {
+                            last_total_bytes = b;
+                        }
+                    }
+
+                    let downloaded_bytes = if last_total_bytes > 0 {
+                        ((last_total_bytes as f64) * (pct / 100.0)) as u64
+                    } else {
+                        0
+                    };
+                    if downloaded_bytes > 0 {
+                        last_downloaded_bytes = downloaded_bytes;
+                    }
 
                     let speed = if let Some(idx) = after_tag.find("at ") {
                         after_tag[idx + 3..]
@@ -1323,6 +1420,8 @@ pub async fn start_download(
                             "speed_formatted": speed.clone(),
                             "eta": eta.clone(),
                             "eta_formatted": eta.clone(),
+                            "total_bytes": last_total_bytes,
+                            "downloaded_bytes": downloaded_bytes,
                             "status": "downloading".to_string(),
                         }),
                     );
@@ -1436,6 +1535,12 @@ pub async fn start_download(
             return;
         }
 
+        let final_total = if last_total_bytes > 0 {
+            last_total_bytes
+        } else {
+            last_downloaded_bytes
+        };
+
         let _ = app.emit(
             "download-progress",
             serde_json::json!({
@@ -1446,6 +1551,8 @@ pub async fn start_download(
                 "speed_formatted": "Done".to_string(),
                 "eta": "00:00".to_string(),
                 "eta_formatted": "0s".to_string(),
+                "total_bytes": final_total,
+                "downloaded_bytes": final_total,
                 "status": "completed".to_string(),
             }),
         );
@@ -1454,6 +1561,8 @@ pub async fn start_download(
             serde_json::json!({
                 "id": tid.clone(),
                 "percent": 100.0,
+                "total_bytes": final_total,
+                "downloaded_bytes": final_total,
                 "status": "completed"
             }),
         );

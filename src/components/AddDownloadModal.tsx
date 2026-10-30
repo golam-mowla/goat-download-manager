@@ -58,20 +58,30 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   const [endTime, setEndTime] = useState("00:00:10");
 
   useEffect(() => {
-    if (defaultUrl) {
-      const cleanUrl = typeof defaultUrl === "string" ? defaultUrl : (defaultUrl as any)?.url || "";
+    if (isOpen) {
+      const cleanUrl = typeof defaultUrl === "string" ? defaultUrl.trim() : (defaultUrl as any)?.url || "";
+      setUrl(cleanUrl);
+      setCustomFilename(defaultFilename || "");
+      setMediaInfo(null);
+      setSelectedFormatId("");
+      setSelectedAudioId("");
+      setErrorMessage(null);
+      setSubmitting(false);
       if (cleanUrl) {
-        setUrl(cleanUrl);
         handleUrlDetection(cleanUrl);
       }
     }
-  }, [defaultUrl]);
+  }, [isOpen, defaultUrl, defaultFilename]);
 
-  useEffect(() => {
-    if (defaultFilename) {
-      setCustomFilename(defaultFilename);
-    }
-  }, [defaultFilename]);
+  const handleUrlChange = (newUrl: string) => {
+    setUrl(newUrl);
+    setMediaInfo(null);
+    setCustomFilename("");
+    setSelectedFormatId("");
+    setSelectedAudioId("");
+    setErrorMessage(null);
+    handleUrlDetection(newUrl);
+  };
 
   const handleUrlDetection = (inputUrl: string) => {
     const lower = inputUrl.toLowerCase().trim();
@@ -125,9 +135,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       const text = await navigator.clipboard.readText();
       if (text && text.trim()) {
         const clean = text.trim();
-        setUrl(clean);
-        handleUrlDetection(clean);
-        setErrorMessage(null);
+        handleUrlChange(clean);
       }
     } catch (e) {
       console.warn("Clipboard access error:", e);
@@ -218,7 +226,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       };
 
       setMediaInfo(info);
-      if (!customFilename && parsed.title) {
+      if (parsed.title) {
         setCustomFilename(parsed.title);
       }
       if (videoStreams.length > 0) setSelectedFormatId(videoStreams[0].id);
@@ -336,10 +344,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
               <input
                 type="text"
                 value={url}
-                onChange={(e) => {
-                  setUrl(e.target.value);
-                  handleUrlDetection(e.target.value);
-                }}
+                onChange={(e) => handleUrlChange(e.target.value)}
                 placeholder={
                   tab === "direct"
                     ? "Paste direct link (.zip, .exe, .mkv, .iso, .pdf)..."

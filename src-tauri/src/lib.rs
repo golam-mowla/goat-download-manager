@@ -107,8 +107,23 @@ async fn pause_http_download(
 async fn resume_http_download(
     app: AppHandle,
     state: State<'_, EngineState>,
+    download_state: State<'_, DownloadState>,
     task_id: String,
 ) -> Result<(), String> {
+    // 1. Check if this is a media (yt-dlp) task with saved options
+    let maybe_opts = {
+        let opts_lock = download_state.task_options.lock().unwrap();
+        opts_lock.get(&task_id).cloned()
+    };
+
+    if let Some(mut opts) = maybe_opts {
+        opts.task_id = Some(task_id.clone());
+        download_state.cancelled_tasks.lock().unwrap().insert(task_id.clone(), false);
+        let _ = media::start_download(app, download_state, opts).await;
+        return Ok(());
+    }
+
+    // 2. Otherwise it's an HTTP engine task
     queue::resume_download(app, state.inner().clone(), task_id).await
 }
 
@@ -415,6 +430,7 @@ pub fn run() {
         .manage(DownloadState {
             active_pids: Arc::new(Mutex::new(HashMap::new())),
             cancelled_tasks: Arc::new(Mutex::new(HashMap::new())),
+            task_options: Arc::new(Mutex::new(HashMap::new())),
         })
         .manage(AppUrlState {
             pending_url: Arc::new(Mutex::new(pending_arg_url)),
