@@ -845,8 +845,21 @@ pub async fn start_download(
 
     let tid = task_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        fs::create_dir_all(&options.save_folder)
-            .map_err(|e| format!("Failed to create output folder: {}", e))?;
+        if let Err(e) = fs::create_dir_all(&options.save_folder) {
+            let err_msg = format!("Failed to create output folder: {}", e);
+            let _ = app.emit("download-error", serde_json::json!({ "id": tid.clone(), "error": err_msg }));
+            let _ = app.emit(
+                "download-progress",
+                serde_json::json!({
+                    "id": tid,
+                    "status": "error",
+                    "error_message": err_msg,
+                    "speed_formatted": "0 B/s",
+                    "eta_formatted": "--",
+                }),
+            );
+            return;
+        }
 
         let mut cmd = make_command("yt-dlp");
         cmd.args(["--newline", "--progress", "--no-playlist"]);

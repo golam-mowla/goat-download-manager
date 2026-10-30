@@ -4,7 +4,6 @@ pub mod queue;
 
 use downloader::{DownloadTask, EngineState, UrlMetadata};
 use media::{AppUrlState, DownloadState};
-use serde_json::json;
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
