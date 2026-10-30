@@ -945,7 +945,7 @@ pub async fn start_download(
                 suffix_tag
             )
         };
-        cmd.args(["-o", &out_tmpl, "--windows-filenames"]);
+        cmd.args(["-o", &out_tmpl, "--windows-filenames", "--no-playlist", "--no-check-certificates", "--concurrent-fragments", "4"]);
 
         // Resumable Part Files & Continue - Always resume from saved byte
         cmd.arg("-c"); // --continue

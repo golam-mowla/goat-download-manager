@@ -32,10 +32,10 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 // Intercept standard HTTP/HTTPS file downloads (IDM style)
-chrome.downloads.onCreated.addListener(async (downloadItem) => {
+async function handleDownloadInterception(downloadItem, suggest) {
   try {
     const rawUrl = downloadItem.finalUrl || downloadItem.url;
-    if (!rawUrl || !rawUrl.startsWith("http")) return;
+    if (!rawUrl || !rawUrl.startsWith("http")) return false;
 
     // Check if filename or url matches intercept extensions
     let ext = "";
@@ -44,27 +44,30 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
       if (match) ext = match[1].toLowerCase();
     }
     if (!ext) {
-      const pathname = new URL(rawUrl).pathname;
-      const match = pathname.match(/\.([a-zA-Z0-9]+)$/);
-      if (match) ext = match[1].toLowerCase();
+      try {
+        const pathname = new URL(rawUrl).pathname;
+        const match = pathname.match(/\.([a-zA-Z0-9]+)$/);
+        if (match) ext = match[1].toLowerCase();
+      } catch (e) {}
     }
 
     if (INTERCEPT_EXTENSIONS.has(ext)) {
       const storage = await chrome.storage.local.get(["interceptDownloads"]);
       if (storage.interceptDownloads === false) {
-        return; // User disabled interception
+        return false; // User disabled interception in popup/settings
       }
 
-      if (interceptedDownloadIds.has(downloadItem.id)) return;
+      if (interceptedDownloadIds.has(downloadItem.id)) return true;
       interceptedDownloadIds.add(downloadItem.id);
 
-      // Cancel the browser's native single-threaded download
-      chrome.downloads.cancel(downloadItem.id, () => {
-        // Erase the cancelled download item from browser history
-        chrome.downloads.erase({ id: downloadItem.id }, () => {});
-      });
+      // Cancel the browser's native download immediately before Brave/Chrome shows Save As dialog
+      try {
+        chrome.downloads.cancel(downloadItem.id, () => {
+          chrome.downloads.erase({ id: downloadItem.id }, () => {});
+        });
+      } catch (e) {}
 
-      // Show notification
+      // Show desktop notification
       chrome.notifications.create({
         type: "basic",
         iconUrl: "icons/icon128.png",
@@ -75,10 +78,29 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
 
       // Forward to GDM Desktop Engine
       await sendUrlToGdm(rawUrl, null, downloadItem.filename);
+      return true;
     }
   } catch (err) {
     console.error("Error intercepting download:", err);
   }
+  return false;
+}
+
+// Attach to onDeterminingFilename to suppress Brave's native file-picker prompt
+if (chrome.downloads && chrome.downloads.onDeterminingFilename) {
+  chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
+    handleDownloadInterception(downloadItem, suggest).then((intercepted) => {
+      if (!intercepted && suggest) {
+        suggest();
+      }
+    });
+    return true; // Keep callback channel open for async determination
+  });
+}
+
+// Fallback listener for downloads created directly
+chrome.downloads.onCreated.addListener((downloadItem) => {
+  handleDownloadInterception(downloadItem);
 });
 
 // Handle Context Menu clicks

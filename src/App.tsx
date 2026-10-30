@@ -117,6 +117,12 @@ export const App: React.FC = () => {
             isResumable: isResumable || current.isResumable || current.is_resumable || false,
             speed_bytes_per_sec: speedBps,
             speedBps,
+            speed_formatted: updated.speed_formatted || updated.speedFormatted || updated.speed || (speedBps > 0 ? (speedBps >= 1048576 ? `${(speedBps / 1048576).toFixed(2)} MB/s` : `${(speedBps / 1024).toFixed(1)} KB/s`) : "0 B/s"),
+            speedFormatted: updated.speed_formatted || updated.speedFormatted || updated.speed || (speedBps > 0 ? (speedBps >= 1048576 ? `${(speedBps / 1048576).toFixed(2)} MB/s` : `${(speedBps / 1024).toFixed(1)} KB/s`) : "0 B/s"),
+            speed: updated.speed_formatted || updated.speedFormatted || updated.speed || (speedBps > 0 ? (speedBps >= 1048576 ? `${(speedBps / 1048576).toFixed(2)} MB/s` : `${(speedBps / 1024).toFixed(1)} KB/s`) : "0 B/s"),
+            eta_formatted: updated.eta_formatted || updated.etaFormatted || updated.eta || "--",
+            etaFormatted: updated.eta_formatted || updated.etaFormatted || updated.eta || "--",
+            eta: updated.eta_formatted || updated.etaFormatted || updated.eta || "--",
             speedHistory: newHistory,
           };
           return updatedList;
@@ -132,6 +138,12 @@ export const App: React.FC = () => {
               isResumable,
               speed_bytes_per_sec: speedBps,
               speedBps,
+              speed_formatted: updated.speed_formatted || updated.speedFormatted || updated.speed || (speedBps > 0 ? (speedBps >= 1048576 ? `${(speedBps / 1048576).toFixed(2)} MB/s` : `${(speedBps / 1024).toFixed(1)} KB/s`) : "0 B/s"),
+              speedFormatted: updated.speed_formatted || updated.speedFormatted || updated.speed || (speedBps > 0 ? (speedBps >= 1048576 ? `${(speedBps / 1048576).toFixed(2)} MB/s` : `${(speedBps / 1024).toFixed(1)} KB/s`) : "0 B/s"),
+              speed: updated.speed_formatted || updated.speedFormatted || updated.speed || (speedBps > 0 ? (speedBps >= 1048576 ? `${(speedBps / 1048576).toFixed(2)} MB/s` : `${(speedBps / 1024).toFixed(1)} KB/s`) : "0 B/s"),
+              eta_formatted: updated.eta_formatted || updated.etaFormatted || updated.eta || "--",
+              etaFormatted: updated.eta_formatted || updated.etaFormatted || updated.eta || "--",
+              eta: updated.eta_formatted || updated.etaFormatted || updated.eta || "--",
               speedHistory: [{ time: timeStr, speedKb }],
             },
             ...prev,
@@ -636,6 +648,7 @@ export const App: React.FC = () => {
         defaultUrl={modalInitialUrl}
         onAddDirectDownload={handleAddDirectDownload}
         onAddMediaDownload={handleAddMediaDownload}
+        theme={theme}
       />
 
       {/* Preferences / Settings Modal */}
@@ -644,6 +657,7 @@ export const App: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         defaultDir={defaultDir}
         onChangeDefaultDir={setDefaultDir}
+        theme={theme}
       />
     </div>
   );

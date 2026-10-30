@@ -21,6 +21,7 @@ interface PreferencesModalProps {
   onClose: () => void;
   defaultDir: string;
   onChangeDefaultDir: (dir: string) => void;
+  theme?: "dark" | "light";
 }
 
 export const PreferencesModal: React.FC<PreferencesModalProps> = ({
@@ -28,9 +29,14 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
   onClose,
   defaultDir,
   onChangeDefaultDir,
+  theme = "dark",
 }) => {
+  const isDark = theme === "dark";
   const [activeTab, setActiveTab] = useState<"general" | "connection" | "tools">("general");
   const [savePath, setSavePath] = useState(defaultDir);
+  const [interceptBrowser, setInterceptBrowser] = useState(() => {
+    return localStorage.getItem("gdm-intercept-browser") !== "false";
+  });
   const [maxConcurrent, setMaxConcurrent] = useState(3);
   const [defaultConnections, setDefaultConnections] = useState(8);
   const [speedLimitEnabled, setSpeedLimitEnabled] = useState(false);
@@ -98,31 +104,39 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-xl rounded-xl bg-[#111827] border border-[#1f2937] shadow-2xl overflow-hidden text-slate-100">
+      <div className={`w-full max-w-xl rounded-xl border shadow-2xl overflow-hidden transition-colors ${
+        isDark ? "bg-[#111827] border-[#1f2937] text-slate-100" : "bg-white border-slate-200 text-slate-900"
+      }`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1f2937] bg-[#162032]">
+        <div className={`flex items-center justify-between px-5 py-3.5 border-b transition-colors ${
+          isDark ? "border-[#1f2937] bg-[#162032]" : "border-slate-200 bg-slate-50"
+        }`}>
           <div className="flex items-center space-x-2.5">
-            <Settings className="w-5 h-5 text-blue-400" />
-            <h2 className="font-bold text-sm text-white">
+            <Settings className="w-5 h-5 text-blue-500" />
+            <h2 className={`font-bold text-sm ${isDark ? "text-white" : "text-slate-900"}`}>
               GDM Options & Configuration
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#1f2937] transition-colors"
+            className={`p-1 rounded-lg transition-colors ${
+              isDark ? "text-slate-400 hover:text-white hover:bg-[#1f2937]" : "text-slate-500 hover:text-slate-900 hover:bg-slate-200"
+            }`}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-[#1f2937] bg-[#0d1424] px-5 pt-2 space-x-6">
+        <div className={`flex border-b px-5 pt-2 space-x-6 transition-colors ${
+          isDark ? "border-[#1f2937] bg-[#0d1424]" : "border-slate-200 bg-slate-100"
+        }`}>
           <button
             onClick={() => setActiveTab("general")}
             className={`pb-2 text-xs font-bold flex items-center space-x-1.5 border-b-2 transition-all ${
               activeTab === "general"
-                ? "border-blue-500 text-blue-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-blue-500 text-blue-500"
+                : isDark ? "border-transparent text-slate-400 hover:text-slate-200" : "border-transparent text-slate-500 hover:text-slate-900"
             }`}
           >
             <HardDrive className="w-3.5 h-3.5" />
@@ -133,8 +147,8 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
             onClick={() => setActiveTab("connection")}
             className={`pb-2 text-xs font-bold flex items-center space-x-1.5 border-b-2 transition-all ${
               activeTab === "connection"
-                ? "border-blue-500 text-blue-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-blue-500 text-blue-500"
+                : isDark ? "border-transparent text-slate-400 hover:text-slate-200" : "border-transparent text-slate-500 hover:text-slate-900"
             }`}
           >
             <Cpu className="w-3.5 h-3.5" />
@@ -145,8 +159,8 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
             onClick={() => setActiveTab("tools")}
             className={`pb-2 text-xs font-bold flex items-center space-x-1.5 border-b-2 transition-all ${
               activeTab === "tools"
-                ? "border-blue-500 text-blue-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-blue-500 text-blue-500"
+                : isDark ? "border-transparent text-slate-400 hover:text-slate-200" : "border-transparent text-slate-500 hover:text-slate-900"
             }`}
           >
             <Zap className="w-3.5 h-3.5" />

@@ -85,6 +85,26 @@ export const getIsResumable = (t: DownloadTask | any): boolean => {
   return Boolean(t.is_resumable ?? t.isResumable ?? t.supports_ranges ?? t.supportsRanges ?? false);
 };
 
+export const getSpeedFormatted = (t: DownloadTask | any): string => {
+  if (!t) return "0 B/s";
+  if (t.speed_formatted && t.speed_formatted !== "0 B/s" && t.speed_formatted !== "--") return t.speed_formatted;
+  if (t.speedFormatted && t.speedFormatted !== "0 B/s" && t.speedFormatted !== "--") return t.speedFormatted;
+  if (t.speed && t.speed !== "0 B/s" && t.speed !== "--") return t.speed;
+  const bps = t.speed_bps ?? t.speedBps ?? t.speed_bytes_per_sec ?? 0;
+  if (typeof bps === "number" && bps > 0) {
+    return `${formatBytes(bps)}/s`;
+  }
+  return "0 B/s";
+};
+
+export const getEtaFormatted = (t: DownloadTask | any): string => {
+  if (!t) return "--";
+  if (t.eta_formatted && t.eta_formatted !== "--") return t.eta_formatted;
+  if (t.etaFormatted && t.etaFormatted !== "--") return t.etaFormatted;
+  if (t.eta && t.eta !== "--") return t.eta;
+  return "--";
+};
+
 export const formatBytes = (bytes: number | null | undefined): string => {
   if (bytes === undefined || bytes === null || isNaN(bytes) || bytes <= 0) {
     return "0 B";

@@ -25,6 +25,7 @@ interface AddDownloadModalProps {
     connections: number
   ) => Promise<void>;
   onAddMediaDownload: (options: any) => Promise<void>;
+  theme?: "dark" | "light";
 }
 
 export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
@@ -33,7 +34,9 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   defaultUrl = "",
   onAddDirectDownload,
   onAddMediaDownload,
+  theme = "dark",
 }) => {
+  const isDark = theme === "dark";
   const [tab, setTab] = useState<"direct" | "media">("direct");
 
   // Direct Download State
@@ -246,52 +249,60 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-xl rounded-xl bg-[#111827] border border-[#1f2937] shadow-2xl overflow-hidden text-slate-100">
+      <div className={`w-full max-w-xl rounded-xl border shadow-2xl overflow-hidden transition-colors ${
+        isDark ? "bg-[#111827] border-[#1f2937] text-slate-100" : "bg-white border-slate-200 text-slate-900"
+      }`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1f2937] bg-[#162032]">
+        <div className={`flex items-center justify-between px-5 py-3.5 border-b transition-colors ${
+          isDark ? "border-[#1f2937] bg-[#162032]" : "border-slate-200 bg-slate-50"
+        }`}>
           <div className="flex items-center space-x-2.5">
             <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center bg-transparent flex-shrink-0">
               <img src="/icon.png" alt="Goat" className="w-full h-full object-contain" />
             </div>
             <div>
-              <h2 className="font-bold text-sm text-white">
+              <h2 className={`font-bold text-sm ${isDark ? "text-white" : "text-slate-900"}`}>
                 Add New Download
               </h2>
-              <p className="text-[11px] text-slate-300">
+              <p className={`text-[11px] ${isDark ? "text-slate-300" : "text-slate-600"}`}>
                 Segmented HTTP Engine & Media Extractor
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#1f2937] transition-colors"
+            className={`p-1 rounded-lg transition-colors ${
+              isDark ? "text-slate-400 hover:text-white hover:bg-[#1f2937]" : "text-slate-500 hover:text-slate-900 hover:bg-slate-200"
+            }`}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Selection */}
-        <div className="flex border-b border-[#1f2937] bg-[#0d1424] px-5 pt-2.5 space-x-6">
+        <div className={`flex border-b px-5 pt-2.5 space-x-6 transition-colors ${
+          isDark ? "border-[#1f2937] bg-[#0d1424]" : "border-slate-200 bg-slate-100"
+        }`}>
           <button
             onClick={() => setTab("direct")}
             className={`pb-2 text-xs font-bold flex items-center space-x-2 border-b-2 transition-all ${
               tab === "direct"
-                ? "border-blue-500 text-blue-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-blue-500 text-blue-500"
+                : isDark ? "border-transparent text-slate-400 hover:text-slate-200" : "border-transparent text-slate-500 hover:text-slate-900"
             }`}
           >
-            <Zap className="w-4 h-4 text-blue-400" />
+            <Zap className="w-4 h-4 text-blue-500" />
             <span>Direct File (IDM Segmented)</span>
           </button>
           <button
             onClick={() => setTab("media")}
             className={`pb-2 text-xs font-bold flex items-center space-x-2 border-b-2 transition-all ${
               tab === "media"
-                ? "border-purple-500 text-purple-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-purple-500 text-purple-500"
+                : isDark ? "border-transparent text-slate-400 hover:text-slate-200" : "border-transparent text-slate-500 hover:text-slate-900"
             }`}
           >
-            <Film className="w-4 h-4 text-purple-400" />
+            <Film className="w-4 h-4 text-purple-500" />
             <span>Video & Social Media (yt-dlp)</span>
           </button>
         </div>
@@ -308,11 +319,13 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
           {/* URL Input with Paste Button */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-white">Target Download URL</label>
+              <label className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                Target Download URL
+              </label>
               <button
                 type="button"
                 onClick={handlePasteClipboard}
-                className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 flex items-center space-x-1"
+                className="text-[11px] font-semibold text-blue-500 hover:text-blue-600 flex items-center space-x-1"
               >
                 <Clipboard className="w-3.5 h-3.5" />
                 <span>Paste from Clipboard</span>
@@ -331,7 +344,11 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                     ? "Paste direct link (.zip, .exe, .mkv, .iso, .pdf)..."
                     : "Paste YouTube, Facebook, Instagram, or TikTok link..."
                 }
-                className="flex-1 px-3 py-2 rounded-lg text-xs font-mono text-white bg-[#0d1424] border border-[#253350] focus:border-blue-500 focus:outline-none"
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-mono border focus:border-blue-500 focus:outline-none transition-colors ${
+                  isDark
+                    ? "text-white bg-[#0d1424] border-[#253350]"
+                    : "text-slate-900 bg-slate-50 border-slate-300 focus:bg-white placeholder:text-slate-400"
+                }`}
                 autoFocus
               />
               {tab === "media" && (
@@ -353,18 +370,28 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
 
           {/* Save Destination Folder */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-white">Save Destination</label>
+            <label className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+              Save Destination
+            </label>
             <div className="flex space-x-2">
               <input
                 type="text"
                 value={saveFolder}
                 onChange={(e) => setSaveFolder(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-lg text-xs font-mono text-white bg-[#0d1424] border border-[#253350] focus:border-blue-500 focus:outline-none"
+                className={`flex-1 px-3 py-2 rounded-lg text-xs font-mono border focus:border-blue-500 focus:outline-none transition-colors ${
+                  isDark
+                    ? "text-white bg-[#0d1424] border-[#253350]"
+                    : "text-slate-900 bg-slate-50 border-slate-300 focus:bg-white"
+                }`}
               />
               <button
                 type="button"
                 onClick={handleSelectFolder}
-                className="px-3.5 py-2 rounded-lg bg-[#1f2937] hover:bg-[#374151] border border-[#253350] text-slate-200 hover:text-white transition-colors"
+                className={`px-3.5 py-2 rounded-lg border transition-colors ${
+                  isDark
+                    ? "bg-[#1f2937] hover:bg-[#374151] border-[#253350] text-slate-200 hover:text-white"
+                    : "bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700 hover:text-slate-900"
+                }`}
                 title="Browse folder"
               >
                 <Folder className="w-4 h-4" />
@@ -374,26 +401,30 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
 
           {/* Custom Filename */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-white">
-              Custom Filename <span className="text-slate-400 font-normal">(Optional)</span>
+            <label className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+              Custom Filename <span className={`${isDark ? "text-slate-400" : "text-slate-500"} font-normal`}>(Optional)</span>
             </label>
             <input
               type="text"
               value={customFilename}
               onChange={(e) => setCustomFilename(e.target.value)}
               placeholder="Leave empty to use server original name"
-              className="w-full px-3 py-2 rounded-lg text-xs text-white bg-[#0d1424] border border-[#253350] focus:border-blue-500 focus:outline-none"
+              className={`w-full px-3 py-2 rounded-lg text-xs border focus:border-blue-500 focus:outline-none transition-colors ${
+                isDark
+                  ? "text-white bg-[#0d1424] border-[#253350]"
+                  : "text-slate-900 bg-slate-50 border-slate-300 focus:bg-white placeholder:text-slate-400"
+              }`}
             />
           </div>
 
           {/* Direct Mode Specifics: Simultaneous Segments */}
           {tab === "direct" && (
-            <div className="space-y-2 pt-2 border-t border-[#1f2937]">
+            <div className={`space-y-2 pt-2 border-t ${isDark ? "border-[#1f2937]" : "border-slate-200"}`}>
               <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-white">
+                <span className={`font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
                   Simultaneous Download Segments (Threads)
                 </span>
-                <span className="font-mono font-bold text-blue-400">
+                <span className="font-mono font-bold text-blue-500">
                   {connections} Chunks (IDM Turbo)
                 </span>
               </div>
@@ -406,14 +437,16 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                     className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
                       connections === num
                         ? "bg-blue-600 border-blue-500 text-white"
-                        : "bg-[#0d1424] border-[#1f2937] text-slate-300 hover:bg-[#162032] hover:text-white"
+                        : isDark
+                        ? "bg-[#0d1424] border-[#1f2937] text-slate-300 hover:bg-[#162032] hover:text-white"
+                        : "bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200 hover:text-slate-900"
                     }`}
                   >
                     {num} Threads
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-300">
+              <p className={`text-[11px] ${isDark ? "text-slate-300" : "text-slate-600"}`}>
                 Splits file into concurrent HTTP Range slices for maximum bandwidth saturation.
               </p>
             </div>
@@ -421,8 +454,10 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
 
           {/* Media Mode Specifics */}
           {tab === "media" && mediaInfo && (
-            <div className="space-y-3 pt-2 border-t border-[#1f2937]">
-              <div className="flex items-center space-x-3 p-2.5 rounded-lg bg-[#0d1424] border border-[#1f2937]">
+            <div className={`space-y-3 pt-2 border-t ${isDark ? "border-[#1f2937]" : "border-slate-200"}`}>
+              <div className={`flex items-center space-x-3 p-2.5 rounded-lg border ${
+                isDark ? "bg-[#0d1424] border-[#1f2937]" : "bg-slate-50 border-slate-200"
+              }`}>
                 {mediaInfo.thumbnail && (
                   <img
                     src={mediaInfo.thumbnail}
@@ -431,10 +466,10 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                   />
                 )}
                 <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-bold text-white truncate">
+                  <h4 className={`text-xs font-bold truncate ${isDark ? "text-white" : "text-slate-900"}`}>
                     {mediaInfo.title}
                   </h4>
-                  <p className="text-[11px] text-slate-300 truncate">
+                  <p className={`text-[11px] truncate ${isDark ? "text-slate-300" : "text-slate-600"}`}>
                     {mediaInfo.uploader}
                   </p>
                 </div>
@@ -443,14 +478,24 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
               {/* Stream Picker */}
               {mediaInfo.videoStreams.length > 0 && (
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-white">Video Quality</label>
+                  <label className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                    Video Quality
+                  </label>
                   <select
                     value={selectedFormatId}
                     onChange={(e) => setSelectedFormatId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg text-xs text-white bg-[#0d1424] border border-[#253350]"
+                    className={`w-full px-3 py-2 rounded-lg text-xs border focus:border-blue-500 focus:outline-none transition-colors ${
+                      isDark
+                        ? "text-white bg-[#0d1424] border-[#253350]"
+                        : "text-slate-900 bg-white border-slate-300 shadow-sm"
+                    }`}
                   >
                     {mediaInfo.videoStreams.map((s) => (
-                      <option key={s.id} value={s.id}>
+                      <option
+                        key={s.id}
+                        value={s.id}
+                        className={isDark ? "bg-[#0d1424] text-white" : "bg-white text-slate-900"}
+                      >
                         {s.label}
                       </option>
                     ))}
@@ -460,14 +505,24 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
 
               {/* Container Format */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-white">Format Container</label>
+                <label className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                  Format Container
+                </label>
                 <select
                   value={container}
                   onChange={(e) => setContainer(e.target.value as ContainerFormat)}
-                  className="w-full px-3 py-2 rounded-lg text-xs text-white bg-[#0d1424] border border-[#253350]"
+                  className={`w-full px-3 py-2 rounded-lg text-xs border focus:border-blue-500 focus:outline-none transition-colors ${
+                    isDark
+                      ? "text-white bg-[#0d1424] border-[#253350]"
+                      : "text-slate-900 bg-white border-slate-300 shadow-sm"
+                  }`}
                 >
                   {ALL_CONTAINERS.map((c) => (
-                    <option key={c} value={c}>
+                    <option
+                      key={c}
+                      value={c}
+                      className={isDark ? "bg-[#0d1424] text-white" : "bg-white text-slate-900"}
+                    >
                       {c}
                     </option>
                   ))}
@@ -479,7 +534,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setEnableClip(!enableClip)}
-                  className="flex items-center space-x-2 text-xs font-semibold text-blue-400 hover:text-blue-300"
+                  className="flex items-center space-x-2 text-xs font-semibold text-blue-500 hover:text-blue-600"
                 >
                   <Scissors className="w-3.5 h-3.5" />
                   <span>{enableClip ? "Disable Timeframe Clipper" : "Enable Timeframe Clipper"}</span>
@@ -487,21 +542,29 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                 {enableClip && (
                   <div className="grid grid-cols-2 gap-3 mt-2">
                     <div>
-                      <span className="text-[10px] text-slate-300 font-bold">Start (HH:MM:SS)</span>
+                      <span className={`text-[10px] font-bold ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                        Start (HH:MM:SS)
+                      </span>
                       <input
                         type="text"
                         value={startTime}
                         onChange={(e) => setStartTime(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded text-xs font-mono text-white bg-[#0d1424] border border-[#253350]"
+                        className={`w-full px-2.5 py-1.5 rounded text-xs font-mono border focus:border-blue-500 focus:outline-none transition-colors ${
+                          isDark ? "text-white bg-[#0d1424] border-[#253350]" : "text-slate-900 bg-slate-50 border-slate-300"
+                        }`}
                       />
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-300 font-bold">End (HH:MM:SS)</span>
+                      <span className={`text-[10px] font-bold ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                        End (HH:MM:SS)
+                      </span>
                       <input
                         type="text"
                         value={endTime}
                         onChange={(e) => setEndTime(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded text-xs font-mono text-white bg-[#0d1424] border border-[#253350]"
+                        className={`w-full px-2.5 py-1.5 rounded text-xs font-mono border focus:border-blue-500 focus:outline-none transition-colors ${
+                          isDark ? "text-white bg-[#0d1424] border-[#253350]" : "text-slate-900 bg-slate-50 border-slate-300"
+                        }`}
                       />
                     </div>
                   </div>
@@ -512,11 +575,15 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end space-x-3 px-5 py-3 border-t border-[#1f2937] bg-[#162032]">
+        <div className={`flex items-center justify-end space-x-3 px-5 py-3 border-t transition-colors ${
+          isDark ? "border-[#1f2937] bg-[#162032]" : "border-slate-200 bg-slate-50"
+        }`}>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:text-white transition-colors"
+            className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
+              isDark ? "text-slate-300 hover:text-white" : "text-slate-600 hover:text-slate-900"
+            }`}
           >
             Cancel
           </button>

@@ -27,6 +27,8 @@ import {
   getTotalBytes,
   getChunkCount,
   getIsResumable,
+  getSpeedFormatted,
+  getEtaFormatted,
 } from "../types";
 import { SpeedChart } from "./SpeedChart";
 
@@ -239,11 +241,11 @@ export const DownloadItemCard: React.FC<DownloadItemCardProps> = ({
               <>
                 <span className="flex items-center space-x-1 text-cyan-300 font-semibold">
                   <Zap className="w-3.5 h-3.5 text-cyan-400 fill-current" />
-                  <span>{task.speed_formatted || "0 B/s"}</span>
+                  <span>{getSpeedFormatted(task)}</span>
                 </span>
                 <span className="flex items-center space-x-1 text-slate-400">
                   <Clock className="w-3.5 h-3.5 text-slate-500" />
-                  <span>{task.eta_formatted || "--"}</span>
+                  <span>{getEtaFormatted(task)}</span>
                 </span>
               </>
             )}

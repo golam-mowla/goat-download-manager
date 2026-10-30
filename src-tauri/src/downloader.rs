@@ -279,7 +279,15 @@ pub async fn execute_multithreaded_download(
         chunk_ranges.push((i, start, end));
     }
 
-    let shared_downloaded = Arc::new(AtomicU64::new(0));
+    let mut initial_downloaded = 0u64;
+    for (index, _, _) in &chunk_ranges {
+        let part_file_path = temp_dir.join(format!("chunk_{}.part", index));
+        if let Ok(meta) = fs::metadata(&part_file_path).await {
+            initial_downloaded += meta.len();
+        }
+    }
+
+    let shared_downloaded = Arc::new(AtomicU64::new(initial_downloaded));
     let mut chunk_join_handles = Vec::new();
 
     for (index, start, end) in chunk_ranges {
@@ -303,8 +311,14 @@ pub async fn execute_multithreaded_download(
                     .map_err(|e| e.to_string())?;
 
                 let current_len = file.metadata().await.map(|m| m.len()).unwrap_or(0);
-                let chunk_start = start + current_len;
+                let target_chunk_len = if end >= start { end - start + 1 } else { 0 };
 
+                if target_chunk_len > 0 && current_len >= target_chunk_len {
+                    let _ = file.flush().await;
+                    return Ok::<(), String>(());
+                }
+
+                let chunk_start = start + current_len;
                 if end > 0 && chunk_start > end {
                     let _ = file.flush().await;
                     return Ok::<(), String>(());
@@ -326,6 +340,10 @@ pub async fn execute_multithreaded_download(
                 let send_res = req.send().await;
                 let mut resp = match send_res {
                     Ok(r) => {
+                        if r.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+                            let _ = file.flush().await;
+                            return Ok::<(), String>(());
+                        }
                         if !r.status().is_success() && r.status() != reqwest::StatusCode::PARTIAL_CONTENT {
                             if retries < MAX_RETRIES {
                                 retries += 1;

@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{command, AppHandle, Emitter, Manager, State};
 
 #[cfg(target_os = "windows")]
@@ -404,9 +406,62 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
             #[cfg(target_os = "windows")]
             register_windows_protocols();
+
+            // Setup System Tray
+            if let (Ok(show_i), Ok(quit_i)) = (
+                MenuItem::with_id(app, "show", "Open GDM", true, None::<&str>),
+                MenuItem::with_id(app, "quit", "Exit GDM", true, None::<&str>),
+            ) {
+                if let Ok(tray_menu) = Menu::with_items(app, &[&show_i, &quit_i]) {
+                    if let Some(icon) = app.default_window_icon() {
+                        let _ = TrayIconBuilder::new()
+                            .tooltip("Goat Download Manager (GDM)")
+                            .icon(icon.clone())
+                            .menu(&tray_menu)
+                            .show_menu_on_left_click(false)
+                            .on_menu_event(|app, event| {
+                                match event.id.as_ref() {
+                                    "show" => {
+                                        if let Some(window) = app.get_webview_window("main") {
+                                            let _ = window.show();
+                                            let _ = window.unminimize();
+                                            let _ = window.set_focus();
+                                        }
+                                    }
+                                    "quit" => {
+                                        app.exit(0);
+                                    }
+                                    _ => {}
+                                }
+                            })
+                            .on_tray_icon_event(|tray, event| {
+                                if let TrayIconEvent::Click {
+                                    button: MouseButton::Left,
+                                    button_state: MouseButtonState::Up,
+                                    ..
+                                } = event
+                                {
+                                    let app = tray.app_handle();
+                                    if let Some(window) = app.get_webview_window("main") {
+                                        let _ = window.show();
+                                        let _ = window.unminimize();
+                                        let _ = window.set_focus();
+                                    }
+                                }
+                            })
+                            .build(app);
+                    }
+                }
+            }
 
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

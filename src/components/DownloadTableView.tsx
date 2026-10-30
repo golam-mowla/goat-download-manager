@@ -22,6 +22,8 @@ import {
   getTotalBytes,
   getChunkCount,
   getIsResumable,
+  getSpeedFormatted,
+  getEtaFormatted,
 } from "../types";
 import { SpeedChart } from "./SpeedChart";
 
@@ -185,12 +187,12 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
 
                     {/* Speed */}
                     <td className="py-2.5 px-3 font-mono font-bold text-[11px] text-sky-400">
-                      {isDownloading ? (task.speed_formatted || task.speed || "--") : "--"}
+                      {isDownloading ? getSpeedFormatted(task) : "--"}
                     </td>
 
                     {/* Time Left (ETA) */}
                     <td className="py-2.5 px-3 font-mono text-[11px] text-slate-300">
-                      {isDownloading ? (task.eta_formatted || task.eta || "--") : "--"}
+                      {isDownloading ? getEtaFormatted(task) : "--"}
                     </td>
 
                     {/* Action Buttons */}
