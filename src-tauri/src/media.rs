@@ -547,6 +547,11 @@ pub async fn fetch_media_info(
                 "--dump-single-json",
                 "--no-playlist",
                 "--no-check-certificates",
+                "--no-warnings",
+                "--socket-timeout",
+                "10",
+                "--extractor-retries",
+                "1",
             ]);
 
             if find_exe_in_augmented_path("node").is_some() {

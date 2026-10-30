@@ -70,12 +70,12 @@ pub struct EngineState {
 impl EngineState {
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
-            .connect_timeout(Duration::from_secs(15))
+            .timeout(Duration::from_secs(60))
+            .connect_timeout(Duration::from_secs(10))
             .pool_idle_timeout(Duration::from_secs(90))
-            .pool_max_idle_per_host(32)
+            .pool_max_idle_per_host(64)
             .tcp_nodelay(true)
-            .tcp_keepalive(Duration::from_secs(60))
+            .tcp_keepalive(Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
@@ -175,19 +175,40 @@ pub fn format_eta(seconds: u64) -> String {
 }
 
 pub async fn probe_url(client: &reqwest::Client, url: &str) -> Result<UrlMetadata, String> {
-    let req = client.head(url)
-        .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GDM/1.0.0");
+    const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
-    let resp = match req.send().await {
-        Ok(r) if r.status().is_success() => r,
+    // Fast probe: send Range: bytes=0-0 first (IDM method).
+    // In one single roundtrip (~50-100ms), 206 Partial Content returns Content-Range (exact total size),
+    // Content-Disposition (filename), and verifies Range support simultaneously without downloading the file.
+    let range_req = client.get(url)
+        .header(USER_AGENT, BROWSER_UA)
+        .header(RANGE, "bytes=0-0")
+        .header("Accept", "*/*")
+        .header("Connection", "keep-alive")
+        .timeout(Duration::from_secs(6));
+
+    let resp = match range_req.send().await {
+        Ok(r) if r.status().is_success() || r.status() == reqwest::StatusCode::PARTIAL_CONTENT => r,
         _ => {
-            // Fallback to GET with Range: bytes=0-0 if HEAD fails or is rejected
-            client.get(url)
-                .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GDM/1.0.0")
-                .header(RANGE, "bytes=0-0")
-                .send()
-                .await
-                .map_err(|e| format!("Failed to probe URL: {}", e))?
+            // Fallback to fast HEAD request
+            let head_req = client.head(url)
+                .header(USER_AGENT, BROWSER_UA)
+                .header("Accept", "*/*")
+                .timeout(Duration::from_secs(4));
+
+            match head_req.send().await {
+                Ok(r) if r.status().is_success() => r,
+                _ => {
+                    // Final fallback to plain GET
+                    client.get(url)
+                        .header(USER_AGENT, BROWSER_UA)
+                        .header("Accept", "*/*")
+                        .timeout(Duration::from_secs(6))
+                        .send()
+                        .await
+                        .map_err(|e| format!("Failed to probe URL: {}", e))?
+                }
+            }
         }
     };
 
@@ -389,6 +410,11 @@ pub async fn execute_multithreaded_download(
         let shared_downloaded = shared_downloaded.clone();
 
         let handle = tauri::async_runtime::spawn(async move {
+            // Stagger parallel connections slightly to avoid server SYN flood / rate limiter kicks
+            if index > 0 {
+                tokio::time::sleep(Duration::from_millis((index as u64) * 20)).await;
+            }
+
             let mut retries = 0;
             const MAX_RETRIES: usize = 12;
 
@@ -418,8 +444,10 @@ pub async fn execute_multithreaded_download(
                 file.seek(SeekFrom::End(0)).await.map_err(|e| e.to_string())?;
 
                 let mut req = client.get(&url)
-                    .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                    .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
                     .header("Accept", "*/*")
+                    .header("Accept-Encoding", "identity")
+                    .header("Connection", "keep-alive")
                     .header("Referer", &url);
 
                 if end > 0 {
@@ -438,7 +466,7 @@ pub async fn execute_multithreaded_download(
                         if !r.status().is_success() && r.status() != reqwest::StatusCode::PARTIAL_CONTENT {
                             if retries < MAX_RETRIES {
                                 retries += 1;
-                                tokio::time::sleep(Duration::from_millis(1000 * retries as u64)).await;
+                                tokio::time::sleep(Duration::from_millis(800 * retries as u64)).await;
                                 continue;
                             }
                             return Err(format!("Chunk {} HTTP status {}", index, r.status()));
@@ -448,31 +476,32 @@ pub async fn execute_multithreaded_download(
                     Err(e) => {
                         if retries < MAX_RETRIES {
                             retries += 1;
-                            tokio::time::sleep(Duration::from_millis(1000 * retries as u64)).await;
+                            tokio::time::sleep(Duration::from_millis(800 * retries as u64)).await;
                             continue;
                         }
                         return Err(format!("Chunk {} connect failed: {}", index, e));
                     }
                 };
 
+                let mut writer = tokio::io::BufWriter::with_capacity(512 * 1024, file);
                 let mut stream_interrupted = false;
+
                 loop {
                     tokio::select! {
                         _ = chunk_cancel.recv() => {
+                            let _ = writer.flush().await;
                             return Err("Cancelled".to_string());
                         }
                         chunk_res = resp.chunk() => {
                             match chunk_res {
                                 Ok(Some(bytes)) => {
-                                    if let Err(e) = file.write_all(&bytes).await {
+                                    if let Err(e) = writer.write_all(&bytes).await {
                                         return Err(e.to_string());
                                     }
                                     shared_downloaded.fetch_add(bytes.len() as u64, Ordering::Relaxed);
-                                    // Reset retry count upon successfully receiving bytes
                                     retries = 0;
                                 }
                                 Ok(None) => {
-                                    // Reached end of current stream
                                     break;
                                 }
                                 Err(e) => {
@@ -485,7 +514,7 @@ pub async fn execute_multithreaded_download(
                     }
                 }
 
-                let _ = file.flush().await;
+                let _ = writer.flush().await;
 
                 if !stream_interrupted {
                     return Ok::<(), String>(());
@@ -493,7 +522,7 @@ pub async fn execute_multithreaded_download(
 
                 if retries < MAX_RETRIES {
                     retries += 1;
-                    tokio::time::sleep(Duration::from_millis(800 * retries as u64)).await;
+                    tokio::time::sleep(Duration::from_millis(600 * retries as u64)).await;
                     continue;
                 } else {
                     return Err(format!("Chunk {} connection dropped after {} retries", index, MAX_RETRIES));
@@ -584,12 +613,16 @@ pub async fn execute_multithreaded_download(
     let _ = cancel_tx.send(());
 
     if !chunk_errors.is_empty() {
-        if is_paused.load(Ordering::Relaxed) {
+        let is_user_paused = is_paused.load(Ordering::Relaxed)
+            || chunk_errors.iter().any(|e| e == "Cancelled" || e.contains("cancel"));
+
+        if is_user_paused {
             let mut tasks = state.tasks.write().await;
             if let Some(t) = tasks.get_mut(&task_id) {
                 t.status = "paused".to_string();
                 t.speed_bps = 0;
                 t.speed_formatted = "0 B/s".to_string();
+                t.eta_formatted = "--".to_string();
                 let _ = app.emit("download-progress", t.clone());
                 let _ = app.emit("gdm://progress", t.clone());
             }
@@ -600,6 +633,9 @@ pub async fn execute_multithreaded_download(
         let mut tasks = state.tasks.write().await;
         if let Some(t) = tasks.get_mut(&task_id) {
             t.status = "error".to_string();
+            t.speed_bps = 0;
+            t.speed_formatted = "0 B/s".to_string();
+            t.eta_formatted = "--".to_string();
             t.error_message = Some(err_msg.clone());
             let _ = app.emit("download-error", serde_json::json!({ "id": task_id, "error": err_msg }));
             let _ = app.emit("download-progress", t.clone());

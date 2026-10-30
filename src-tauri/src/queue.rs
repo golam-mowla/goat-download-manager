@@ -25,6 +25,7 @@ pub async fn pause_download(
     {
         let controls = state.controls.read().await;
         if let Some(ctrl) = controls.get(&task_id) {
+            ctrl.is_paused.store(true, std::sync::atomic::Ordering::Relaxed);
             let _ = ctrl.cancel_sender.send(());
         }
     }

@@ -244,7 +244,7 @@ export const App: React.FC = () => {
     try {
       await invoke("resume_http_download", { taskId: id });
       setTasks((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, status: "downloading" } : t))
+        prev.map((t) => (t.id === id ? { ...t, status: "queued", error: undefined, error_message: undefined } : t))
       );
     } catch (err) {
       console.error("Resume failed:", err);

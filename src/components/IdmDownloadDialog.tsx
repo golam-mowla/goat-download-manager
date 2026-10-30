@@ -269,13 +269,13 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
                 </button>
               )}
 
-              {isPaused && (
+              {(isPaused || isError) && (
                 <button
                   onClick={() => onResume(task.id)}
                   className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[13px] transition-colors shadow-xs"
                 >
                   <Play className="w-4 h-4 fill-current" />
-                  <span>Resume</span>
+                  <span>{isError ? "Retry" : "Resume"}</span>
                 </button>
               )}
 

@@ -153,12 +153,12 @@ export const DownloadItemCard: React.FC<DownloadItemCardProps> = ({
             </button>
           )}
 
-          {isPaused && (
+          {(isPaused || isError) && (
             <button
               onClick={() => onResume(task.id)}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-gdm-secondary hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="Resume"
-              aria-label="Resume"
+              title={isError ? "Retry" : "Resume"}
+              aria-label={isError ? "Retry" : "Resume"}
             >
               <Play className="w-[18px] h-[18px] fill-current" />
             </button>
