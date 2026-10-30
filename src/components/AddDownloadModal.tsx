@@ -62,18 +62,38 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
 
   useEffect(() => {
     if (defaultUrl) {
-      setUrl(defaultUrl);
-      // Auto-switch to media tab if social or streaming URL
-      if (
-        defaultUrl.includes("youtube.com") ||
-        defaultUrl.includes("youtu.be") ||
-        defaultUrl.includes("instagram.com") ||
-        defaultUrl.includes("facebook.com") ||
-        defaultUrl.includes("tiktok.com") ||
-        defaultUrl.includes("twitter.com") ||
-        defaultUrl.includes("x.com")
-      ) {
-        setTab("media");
+      const cleanUrl = typeof defaultUrl === "string" ? defaultUrl : (defaultUrl as any)?.url || "";
+      if (cleanUrl) {
+        setUrl(cleanUrl);
+        const lower = cleanUrl.toLowerCase();
+        const isDirectFile =
+          lower.endsWith(".mkv") ||
+          lower.endsWith(".mp4") ||
+          lower.endsWith(".avi") ||
+          lower.endsWith(".zip") ||
+          lower.endsWith(".rar") ||
+          lower.endsWith(".7z") ||
+          lower.endsWith(".tar") ||
+          lower.endsWith(".gz") ||
+          lower.endsWith(".iso") ||
+          lower.endsWith(".exe") ||
+          lower.endsWith(".msi") ||
+          lower.endsWith(".pdf");
+
+        if (
+          !isDirectFile &&
+          (lower.includes("youtube.com") ||
+            lower.includes("youtu.be") ||
+            lower.includes("instagram.com") ||
+            lower.includes("facebook.com") ||
+            lower.includes("tiktok.com") ||
+            lower.includes("twitter.com") ||
+            lower.includes("x.com"))
+        ) {
+          setTab("media");
+        } else {
+          setTab("direct");
+        }
       }
     }
   }, [defaultUrl]);
@@ -82,7 +102,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   useEffect(() => {
     const fetchDefaultDir = async () => {
       try {
-        const homeDir = await invoke<string>("get_default_save_path");
+        const homeDir = await invoke<string>("get_default_download_dir");
         if (homeDir) setSaveFolder(homeDir);
       } catch {
         setSaveFolder("D:\\Downloads");
@@ -133,26 +153,38 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
     try {
       setIsFetchingMedia(true);
       setErrorMessage(null);
-      const raw = await invoke<string>("ytdlp_get_info", { url: url.trim() });
-      const parsed = JSON.parse(raw);
+      let parsed: any;
+      try {
+        parsed = await invoke("fetch_media_info", {
+          url: url.trim(),
+          cookiesBrowser: null,
+          cookiesFile: null,
+          proxy: null,
+          discoveryArgs: null,
+        });
+      } catch (err) {
+        parsed = await invoke("ytdlp_get_info", { url: url.trim() });
+      }
+
+      if (typeof parsed === "string") {
+        try { parsed = JSON.parse(parsed); } catch {}
+      }
 
       // Map formats
-      const formats = Array.isArray(parsed.formats) ? parsed.formats : [];
-      const videoStreams = formats
-        .filter((f: any) => f.vcodec && f.vcodec !== "none")
-        .map((f: any) => ({
-          id: String(f.format_id),
-          label: `${f.resolution || (f.height ? `${f.height}p` : "Video")} • ${(f.ext || "mp4").toUpperCase()} • ${f.fps ? `${Math.round(f.fps)}fps` : ""}`,
-          ext: f.ext || "mp4",
-        }));
+      const rawFormats = parsed.videoStreams || parsed.video_streams || parsed.formats || [];
+      const rawAudio = parsed.audioStreams || parsed.audio_streams || [];
 
-      const audioStreams = formats
-        .filter((f: any) => f.acodec && f.acodec !== "none" && (!f.vcodec || f.vcodec === "none"))
-        .map((f: any) => ({
-          id: String(f.format_id),
-          label: `${f.ext || "audio"} • ${f.abr ? `${Math.round(f.abr)}kbps` : "Audio"}`,
-          ext: f.ext || "m4a",
-        }));
+      const videoStreams = rawFormats.map((f: any) => ({
+        id: String(f.id || f.format_id),
+        label: f.label || `${f.resolution || (f.height ? `${f.height}p` : "Video")} • ${(f.ext || "mp4").toUpperCase()} • ${f.fps ? `${Math.round(f.fps)}fps` : ""}`,
+        ext: f.ext || "mp4",
+      }));
+
+      const audioStreams = rawAudio.map((f: any) => ({
+        id: String(f.id || f.format_id),
+        label: f.label || `${f.ext || "audio"} • ${f.abr ? `${Math.round(f.abr)}kbps` : "Audio"}`,
+        ext: f.ext || "m4a",
+      }));
 
       const info: MediaInfo = {
         title: parsed.title || "Online Media",
@@ -161,14 +193,14 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
         thumbnail: parsed.thumbnail || "",
         videoStreams,
         audioStreams,
-        subtitles: [],
+        subtitles: parsed.subtitles || [],
       };
 
       setMediaInfo(info);
       if (videoStreams.length > 0) setSelectedFormatId(videoStreams[0].id);
       if (audioStreams.length > 0) setSelectedAudioId(audioStreams[0].id);
     } catch (err: any) {
-      setErrorMessage("Failed to inspect media stream: " + err.toString());
+      setErrorMessage("Failed to inspect media stream: " + (err?.message || err?.toString() || "Unknown error"));
     } finally {
       setIsFetchingMedia(false);
     }

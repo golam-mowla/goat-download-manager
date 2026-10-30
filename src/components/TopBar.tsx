@@ -23,13 +23,13 @@ export const TopBar: React.FC<TopBarProps> = ({
     <div className="flex items-center space-x-3 w-full">
       {/* Search Input */}
       <div className="relative flex-1">
-        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-purple-300/60" />
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search by filename, URL, or format..."
-          className="w-full pl-9 pr-7 py-1.5 rounded-lg text-xs text-slate-100 placeholder-slate-500 glass-input font-medium"
+          placeholder="Search by filename, URL, or category..."
+          className="w-full pl-9 pr-7 py-1.5 rounded-lg text-xs text-white placeholder-slate-400 bg-[#0d1424] border border-[#253350] focus:border-blue-500 focus:outline-none font-medium"
         />
         {searchQuery && (
           <button
@@ -42,16 +42,14 @@ export const TopBar: React.FC<TopBarProps> = ({
       </div>
 
       {/* Live Speed Badge */}
-      <div className="hidden sm:flex items-center space-x-2.5 px-3 py-1 rounded-lg bg-slate-900/90 border border-purple-500/20 shadow-inner flex-shrink-0">
-        <div className="flex items-center space-x-1">
-          <Zap className="w-3 h-3 text-cyan-400 fill-current animate-pulse" />
-          <span className="text-[11px] font-mono font-bold text-cyan-300">
-            {totalSpeedFormatted}
-          </span>
-        </div>
-        <div className="h-2.5 w-px bg-purple-500/20" />
-        <span className="text-[10px] text-slate-400 font-medium">
-          <strong className="text-purple-300">{activeCount}</strong> active
+      <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-[#0d1424] border border-[#253350] flex-shrink-0">
+        <Zap className="w-3.5 h-3.5 text-yellow-400 fill-current animate-pulse" />
+        <span className="text-xs font-mono font-bold text-white">
+          {totalSpeedFormatted}
+        </span>
+        <span className="text-slate-500">|</span>
+        <span className="text-xs text-slate-300 font-medium">
+          <strong className="text-blue-400">{activeCount}</strong> active
         </span>
       </div>
     </div>

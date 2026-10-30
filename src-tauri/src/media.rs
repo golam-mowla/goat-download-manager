@@ -60,7 +60,7 @@ pub struct MediaInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct DownloadOptions {
     pub task_id: Option<String>,
     pub url: String,
@@ -118,6 +118,59 @@ pub struct DownloadOptions {
     pub embed_subtitles_global: bool,
     pub ffmpeg_threads: u32,
     pub post_processor_args: String,
+}
+
+impl Default for DownloadOptions {
+    fn default() -> Self {
+        Self {
+            task_id: None,
+            url: String::new(),
+            save_folder: String::new(),
+            custom_filename: None,
+            download_mode: "video".to_string(),
+            container: "MP4 (Video)".to_string(),
+            video_stream_id: "best".to_string(),
+            audio_stream_id: "best".to_string(),
+            audio_bitrate: "320".to_string(),
+            enable_subtitles: false,
+            subtitle_lang: "en".to_string(),
+            subtitle_format: "srt".to_string(),
+            subtitle_save_mode: "separate".to_string(),
+            enable_clip: false,
+            start_time: "00:00:00".to_string(),
+            end_time: "00:00:10".to_string(),
+            precise_cut: false,
+            max_active_downloads: 3,
+            overwrite_files: true,
+            include_media_id: false,
+            include_auto_subtitles: false,
+            include_super_res: false,
+            preferred_video_codec: "h264".to_string(),
+            preferred_audio_codec: "aac".to_string(),
+            preferred_subtitle_format: "srt".to_string(),
+            preferred_fps: "60".to_string(),
+            use_part_files: true,
+            sponsor_block: false,
+            limit_speed: false,
+            speed_limit_kb: 0,
+            proxy: String::new(),
+            cookies_file: String::new(),
+            cookies_browser: String::new(),
+            use_aria2c: false,
+            aria2_connections: 8,
+            ytdlp_discovery_args: String::new(),
+            ytdlp_download_args: String::new(),
+            translate_metadata: false,
+            embed_metadata: true,
+            embed_thumbnails: true,
+            crop_audio_thumbnails: true,
+            embed_chapters: false,
+            split_chapters: false,
+            embed_subtitles_global: false,
+            ffmpeg_threads: 4,
+            post_processor_args: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

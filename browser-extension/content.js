@@ -1,4 +1,4 @@
-// Goat Download Manager (GDM) - Content Script & Video Grabber
+// Goat Download Manager (GDM) - IDM-Style Video & Media Overlay Grabber
 
 (() => {
   let lastRightClickedElement = null;
@@ -60,8 +60,13 @@
       return window.location.href;
     }
 
-    // 4. Facebook / Twitter
-    if (hostname.includes("facebook.com") || hostname.includes("fb.watch") || hostname.includes("twitter.com") || hostname.includes("x.com")) {
+    // 4. Facebook / Twitter / X
+    if (
+      hostname.includes("facebook.com") ||
+      hostname.includes("fb.watch") ||
+      hostname.includes("twitter.com") ||
+      hostname.includes("x.com")
+    ) {
       return window.location.href;
     }
 
@@ -87,10 +92,11 @@
   }
 
   // ---------------------------------------------------------------------------
-  // IDM-Style Floating Video Grabber Button
+  // IDM-Style Floating Video Grabber Overlay
   // ---------------------------------------------------------------------------
   let activeGrabberButton = null;
-  let hoveredVideo = null;
+  let currentTargetVideo = null;
+  let hideTimer = null;
 
   function createVideoGrabber() {
     if (document.getElementById("gdm-floating-grabber")) return;
@@ -99,50 +105,97 @@
     btn.id = "gdm-floating-grabber";
     btn.innerHTML = `
       <div style="display:flex;align-items:center;gap:6px;">
-        <span style="font-size:14px;">🐐</span>
-        <span style="font-size:11px;font-weight:700;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;">Download with GDM</span>
+        <span style="font-size:15px;line-height:1;">🐐</span>
+        <span style="font-size:11px;font-weight:700;letter-spacing:0.3px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#ffffff;">Download this video</span>
       </div>
     `;
 
-    // Styling
+    // Styling: Sleek IDM dark translucent bar with blue accent
     Object.assign(btn.style, {
       position: "fixed",
       zIndex: "2147483647",
       display: "none",
       alignItems: "center",
-      padding: "6px 12px",
-      borderRadius: "8px",
-      background: "linear-gradient(135deg, rgba(147, 51, 234, 0.92), rgba(219, 39, 119, 0.92))",
+      padding: "5px 10px",
+      borderRadius: "6px",
+      background: "rgba(17, 24, 39, 0.95)",
+      border: "1px solid rgba(59, 130, 246, 0.6)",
       color: "#ffffff",
-      boxShadow: "0 4px 18px rgba(0,0,0,0.4), 0 0 10px rgba(168,85,247,0.4)",
-      border: "1px solid rgba(255,255,255,0.25)",
+      boxShadow: "0 4px 14px rgba(0,0,0,0.5), 0 0 10px rgba(59,130,246,0.3)",
       cursor: "pointer",
       userSelect: "none",
-      transition: "opacity 0.2s ease, transform 0.2s ease",
-      backdropFilter: "blur(8px)",
+      transition: "opacity 0.15s ease, transform 0.15s ease",
+      backdropFilter: "blur(6px)",
       opacity: "0",
       pointerEvents: "none",
     });
 
     btn.addEventListener("mouseenter", () => {
-      btn.style.transform = "scale(1.04)";
-      btn.style.boxShadow = "0 6px 22px rgba(168,85,247,0.6)";
+      clearTimeout(hideTimer);
+      btn.style.transform = "scale(1.03)";
+      btn.style.borderColor = "#3b82f6";
+      btn.style.boxShadow = "0 6px 20px rgba(59,130,246,0.5)";
     });
 
     btn.addEventListener("mouseleave", () => {
       btn.style.transform = "scale(1)";
+      scheduleHide();
     });
 
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       e.preventDefault();
-      const targetUrl = window.location.href;
+
+      let targetUrl = window.location.href;
+      if (currentTargetVideo) {
+        if (currentTargetVideo.currentSrc && isValidDownloadUrl(currentTargetVideo.currentSrc)) {
+          targetUrl = currentTargetVideo.currentSrc;
+        } else if (currentTargetVideo.src && isValidDownloadUrl(currentTargetVideo.src)) {
+          targetUrl = currentTargetVideo.src;
+        }
+      }
+
+      showToast("Goat Download Manager 🐐", "Sending media to GDM Engine...", "info");
       chrome.runtime.sendMessage({ action: "SEND_TO_GDM", url: targetUrl });
       btn.style.display = "none";
     });
 
     document.body.appendChild(btn);
     activeGrabberButton = btn;
+  }
+
+  function scheduleHide() {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      if (activeGrabberButton && !activeGrabberButton.matches(":hover")) {
+        activeGrabberButton.style.opacity = "0";
+        activeGrabberButton.style.pointerEvents = "none";
+        setTimeout(() => {
+          if (activeGrabberButton.style.opacity === "0") {
+            activeGrabberButton.style.display = "none";
+          }
+        }, 200);
+      }
+    }, 800);
+  }
+
+  function positionGrabber(video) {
+    if (!activeGrabberButton) return;
+    const rect = video.getBoundingClientRect();
+    if (rect.width < 140 || rect.height < 90) return; // Ignore tiny icons/previews
+
+    currentTargetVideo = video;
+    clearTimeout(hideTimer);
+
+    // Place at top-right of the video viewport
+    const top = Math.max(12, rect.top + 8);
+    const right = Math.max(12, window.innerWidth - rect.right + 8);
+
+    activeGrabberButton.style.top = `${top}px`;
+    activeGrabberButton.style.right = `${right}px`;
+    activeGrabberButton.style.display = "flex";
+    activeGrabberButton.style.opacity = "1";
+    activeGrabberButton.style.pointerEvents = "auto";
   }
 
   // Detect videos on page
@@ -155,41 +208,24 @@
       vid.dataset.gdmAttached = "true";
 
       vid.addEventListener("mouseenter", () => {
-        hoveredVideo = vid;
         positionGrabber(vid);
       });
 
-      vid.addEventListener("mouseleave", (e) => {
-        setTimeout(() => {
-          if (!activeGrabberButton || activeGrabberButton.matches(":hover")) return;
-          if (hoveredVideo === vid && !vid.matches(":hover")) {
-            activeGrabberButton.style.opacity = "0";
-            activeGrabberButton.style.pointerEvents = "none";
-          }
-        }, 300);
+      vid.addEventListener("mousemove", () => {
+        positionGrabber(vid);
+      });
+
+      vid.addEventListener("mouseleave", () => {
+        scheduleHide();
       });
     });
   }
 
-  function positionGrabber(video) {
-    if (!activeGrabberButton) return;
-    const rect = video.getBoundingClientRect();
-    if (rect.width < 140 || rect.height < 100) return; // Ignore small previews
+  // Periodic scan for dynamic videos (YouTube player, Instagram feed, reels)
+  setInterval(attachVideoListeners, 1500);
+  document.addEventListener("DOMContentLoaded", attachVideoListeners);
 
-    const top = Math.max(10, rect.top + 10);
-    const right = Math.max(10, window.innerWidth - rect.right + 10);
-
-    activeGrabberButton.style.top = `${top}px`;
-    activeGrabberButton.style.right = `${right}px`;
-    activeGrabberButton.style.display = "flex";
-    activeGrabberButton.style.opacity = "1";
-    activeGrabberButton.style.pointerEvents = "auto";
-  }
-
-  // Periodic scan for dynamic videos (YouTube, Instagram)
-  setInterval(attachVideoListeners, 2000);
-
-  // Message listener from popup and background
+  // Message listener from background & popup
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "GET_LAST_CLICKED_MEDIA") {
       sendResponse({ url: lastDetectedMediaUrl || window.location.href });
@@ -198,12 +234,10 @@
 
     if (request.action === "SHOW_TOAST") {
       showToast(request.title, request.message, request.status);
-      sendResponse({ received: true });
-      return true;
     }
   });
 
-  // Sleek In-Page Toast Notification
+  // Modern In-Page Toast Notification
   function showToast(title, message, status = "info") {
     let container = document.getElementById("gdm-toast-container");
     if (!container) {
@@ -211,46 +245,46 @@
       container.id = "gdm-toast-container";
       Object.assign(container.style, {
         position: "fixed",
-        bottom: "20px",
-        right: "20px",
+        bottom: "24px",
+        right: "24px",
         zIndex: "2147483647",
         display: "flex",
         flexDirection: "column",
-        gap: "10px",
+        gap: "8px",
         pointerEvents: "none",
-        fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
       });
       document.body.appendChild(container);
     }
 
     const toast = document.createElement("div");
-    toast.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:20px;">🐐</span>
-        <div>
-          <div style="font-weight:700;font-size:12px;color:#f8fafc;">${title || "Goat Download Manager"}</div>
-          <div style="font-size:11px;color:#cbd5e1;margin-top:2px;">${message || ""}</div>
-        </div>
-      </div>
-    `;
-
     Object.assign(toast.style, {
-      background: "rgba(15, 10, 30, 0.95)",
-      border: "1px solid rgba(168, 85, 247, 0.4)",
-      boxShadow: "0 8px 30px rgba(0,0,0,0.5), 0 0 15px rgba(168,85,247,0.3)",
-      backdropFilter: "blur(12px)",
-      color: "#ffffff",
-      padding: "10px 16px",
-      borderRadius: "12px",
-      minWidth: "260px",
-      maxWidth: "340px",
-      transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+      display: "flex",
+      alignItems: "center",
+      gap: "10px",
+      padding: "10px 14px",
+      borderRadius: "8px",
+      background: "#111827",
+      color: "#f8fafc",
+      boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+      border: status === "success" ? "1px solid #10b981" : "1px solid #3b82f6",
+      fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
+      fontSize: "12px",
+      transition: "all 0.25s ease",
       opacity: "0",
-      transform: "translateY(15px)",
+      transform: "translateY(12px)",
       pointerEvents: "auto",
     });
 
+    toast.innerHTML = `
+      <span style="font-size:18px;">${status === "success" ? "✅" : "🐐"}</span>
+      <div>
+        <div style="font-weight:700;font-size:12px;color:#ffffff;">${title}</div>
+        <div style="font-size:11px;color:#cbd5e1;">${message}</div>
+      </div>
+    `;
+
     container.appendChild(toast);
+
     requestAnimationFrame(() => {
       toast.style.opacity = "1";
       toast.style.transform = "translateY(0)";
@@ -258,8 +292,8 @@
 
     setTimeout(() => {
       toast.style.opacity = "0";
-      toast.style.transform = "translateY(15px)";
-      setTimeout(() => toast.remove(), 350);
-    }, 3200);
+      toast.style.transform = "translateY(8px)";
+      setTimeout(() => toast.remove(), 300);
+    }, 3500);
   }
 })();

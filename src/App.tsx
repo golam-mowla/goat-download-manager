@@ -51,20 +51,30 @@ export const App: React.FC = () => {
         const dir = await invoke<string>("get_default_download_dir");
         if (dir) setDefaultDir(dir);
       } catch {}
+
+      // Check if started with pending URL (e.g. via gdm:// protocol)
+      try {
+        const pending = await invoke<string | null>("get_pending_url");
+        if (pending && typeof pending === "string" && pending.trim()) {
+          setModalInitialUrl(pending.trim());
+          setIsAddModalOpen(true);
+        }
+      } catch {}
     };
     loadInitialData();
   }, []);
 
   // Listen to Tauri backend events
   useEffect(() => {
-    // 1. Download progress event
-    const unlistenProgress = listen<DownloadTask>("download-progress", (event) => {
+    const handleProgress = (event: { payload: any }) => {
       const updated = event.payload;
+      if (!updated || !updated.id) return;
       setTasks((prev) => {
         const index = prev.findIndex((t) => t.id === updated.id);
         const now = new Date();
         const timeStr = `${now.getMinutes()}:${now.getSeconds()}`;
-        const speedKb = Math.round((updated.speed_bytes_per_sec || 0) / 1024);
+        const speedBps = updated.speed_bps || updated.speed_bytes_per_sec || 0;
+        const speedKb = Math.round(speedBps / 1024);
 
         if (index >= 0) {
           const current = prev[index];
@@ -75,6 +85,7 @@ export const App: React.FC = () => {
           updatedList[index] = {
             ...current,
             ...updated,
+            speed_bytes_per_sec: speedBps,
             speedHistory: newHistory,
           };
           return updatedList;
@@ -82,44 +93,67 @@ export const App: React.FC = () => {
           return [
             {
               ...updated,
+              speed_bytes_per_sec: speedBps,
               speedHistory: [{ time: timeStr, speedKb }],
             },
             ...prev,
           ];
         }
       });
-    });
+    };
+
+    // 1. Download progress event
+    const unlistenProgress = listen<any>("download-progress", handleProgress);
+    const unlistenGdmProgress = listen<any>("gdm://progress", handleProgress);
 
     // 2. Download complete event
-    const unlistenComplete = listen<DownloadTask>("download-complete", (event) => {
+    const handleComplete = (event: { payload: any }) => {
       const completed = event.payload;
+      if (!completed || !completed.id) return;
       setTasks((prev) =>
         prev.map((t) => (t.id === completed.id ? { ...t, ...completed, status: "completed" } : t))
       );
-    });
+    };
+    const unlistenComplete = listen<any>("download-complete", handleComplete);
+    const unlistenGdmComplete = listen<any>("gdm://completed", handleComplete);
 
     // 3. Download error event
-    const unlistenError = listen<{ id: string; error: string }>("download-error", (event) => {
-      const { id, error } = event.payload;
-      setTasks((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, status: "error", error } : t))
-      );
-    });
-
-    // 4. URL received from browser extension (via bridge / protocol)
-    const unlistenOpenUrl = listen<string>("open-url", (event) => {
-      const targetUrl = event.payload;
-      if (targetUrl) {
-        setModalInitialUrl(targetUrl);
-        setIsAddModalOpen(true);
+    const unlistenError = listen<any>("download-error", (event) => {
+      const payload = event.payload || {};
+      const id = payload.id;
+      const error = payload.error || "Download error";
+      if (id) {
+        setTasks((prev) =>
+          prev.map((t) => (t.id === id ? { ...t, status: "error", error } : t))
+        );
       }
     });
 
+    // 4. URL received from browser extension (via bridge / protocol)
+    const handleOpenUrl = (event: { payload: any }) => {
+      const raw = event.payload;
+      let targetUrl = "";
+      if (typeof raw === "string") {
+        targetUrl = raw;
+      } else if (raw && typeof raw === "object" && raw.url) {
+        targetUrl = String(raw.url);
+      }
+      if (targetUrl && targetUrl.trim()) {
+        setModalInitialUrl(targetUrl.trim());
+        setIsAddModalOpen(true);
+      }
+    };
+    const unlistenOpenUrl = listen<any>("open-url", handleOpenUrl);
+    const unlistenGdmOpenUrl = listen<any>("gdm://open-url", handleOpenUrl);
+
     return () => {
       unlistenProgress.then((f) => f());
+      unlistenGdmProgress.then((f) => f());
       unlistenComplete.then((f) => f());
+      unlistenGdmComplete.then((f) => f());
       unlistenError.then((f) => f());
       unlistenOpenUrl.then((f) => f());
+      unlistenGdmOpenUrl.then((f) => f());
     };
   }, []);
 
@@ -243,7 +277,11 @@ export const App: React.FC = () => {
   };
 
   const handleAddMediaDownload = async (options: any) => {
-    await invoke("ytdlp_download", { options });
+    try {
+      await invoke("ytdlp_download", { options });
+    } catch (e) {
+      await invoke("start_download", { options });
+    }
     const updated = await invoke<DownloadTask[]>("get_all_downloads");
     setTasks(updated);
   };
@@ -424,42 +462,34 @@ export const App: React.FC = () => {
           {filteredTasks.length === 0 ? (
             /* Empty State */
             <div className="h-[65vh] flex flex-col items-center justify-center text-center p-8 space-y-4">
-              <div className="relative group">
-                <div className="absolute -inset-1.5 bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 rounded-full blur-xl opacity-50 group-hover:opacity-80 transition duration-500"></div>
-                <div className="relative w-24 h-24 rounded-full bg-slate-900 border border-purple-500/35 flex items-center justify-center shadow-2xl overflow-hidden">
-                  <img
-                    src="/goat-logo.jpg"
-                    alt="Goat"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = "none";
-                    }}
-                  />
-                  <span className="text-4xl select-none absolute">🐐</span>
-                </div>
+              <div className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center shadow-lg bg-transparent">
+                <img
+                  src="/icon.png"
+                  alt="Goat"
+                  className="w-full h-full object-contain"
+                />
               </div>
 
-              <div className="max-w-md space-y-1.5">
-                <h2 className="text-lg font-bold bg-gradient-to-r from-purple-200 via-pink-200 to-amber-100 bg-clip-text text-transparent">
+              <div className="max-w-md space-y-2">
+                <h2 className="text-xl font-bold text-white">
                   Goat Download Manager (GDM)
                 </h2>
-                <p className="text-xs text-slate-400 leading-relaxed">
+                <p className="text-xs text-slate-300 leading-relaxed">
                   High-speed 16-segment HTTP download acceleration & all-in-one social media stream extractor.
                   Paste any download link above or use the browser extension to intercept downloads.
                 </p>
-              </div>
-
-              <div className="flex items-center space-x-3 pt-1">
-                <button
-                  onClick={() => {
-                    setModalInitialUrl("");
-                    setIsAddModalOpen(true);
-                  }}
-                  className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 transition-all active:scale-95"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add First Download</span>
-                </button>
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setModalInitialUrl("");
+                      setIsAddModalOpen(true);
+                    }}
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow transition-colors inline-flex items-center space-x-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add New Download</span>
+                  </button>
+                </div>
               </div>
             </div>
           ) : viewMode === "table" ? (

@@ -69,7 +69,12 @@ pub struct EngineState {
 impl EngineState {
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(120))
+            .connect_timeout(Duration::from_secs(15))
+            .pool_idle_timeout(Duration::from_secs(90))
+            .pool_max_idle_per_host(32)
+            .tcp_nodelay(true)
+            .tcp_keepalive(Duration::from_secs(60))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
@@ -390,6 +395,7 @@ pub async fn execute_multithreaded_download(
                             "--".to_string()
                         };
 
+                        let _ = monitor_app.emit("download-progress", t.clone());
                         let _ = monitor_app.emit("gdm://progress", t.clone());
                     } else {
                         break;
@@ -419,6 +425,7 @@ pub async fn execute_multithreaded_download(
                 t.status = "paused".to_string();
                 t.speed_bps = 0;
                 t.speed_formatted = "0 B/s".to_string();
+                let _ = app.emit("download-progress", t.clone());
                 let _ = app.emit("gdm://progress", t.clone());
             }
             return Ok(());
@@ -429,6 +436,8 @@ pub async fn execute_multithreaded_download(
         if let Some(t) = tasks.get_mut(&task_id) {
             t.status = "error".to_string();
             t.error_message = Some(err_msg.clone());
+            let _ = app.emit("download-error", serde_json::json!({ "id": task_id, "error": err_msg }));
+            let _ = app.emit("download-progress", t.clone());
             let _ = app.emit("gdm://progress", t.clone());
         }
         return Err(err_msg);
@@ -449,7 +458,7 @@ pub async fn execute_multithreaded_download(
     }
 
     let mut dest_file = File::create(&target_dest).await.map_err(|e| e.to_string())?;
-    let mut merge_buf = vec![0u8; 128 * 1024]; // 128 KB chunk merge buffer
+    let mut merge_buf = vec![0u8; 1024 * 1024]; // 1 MB chunk merge buffer for maximum throughput
 
     for i in 0..chunk_count {
         let part_file_path = temp_dir.join(format!("chunk_{}.part", i));
@@ -477,6 +486,8 @@ pub async fn execute_multithreaded_download(
             t.speed_bps = 0;
             t.speed_formatted = "Done".to_string();
             t.eta_formatted = "0s".to_string();
+            let _ = app.emit("download-complete", t.clone());
+            let _ = app.emit("download-progress", t.clone());
             let _ = app.emit("gdm://completed", t.clone());
             let _ = app.emit("gdm://progress", t.clone());
         }

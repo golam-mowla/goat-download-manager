@@ -53,7 +53,7 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
   const loadToolsInfo = async () => {
     try {
       setCheckingTools(true);
-      const res = await invoke<ToolVersionInfo[]>("check_tool_versions");
+      const res = await invoke<ToolVersionInfo[]>("check_tool_updates");
       if (Array.isArray(res)) setTools(res);
     } catch {
       // fallback

@@ -5,7 +5,6 @@ import {
   FolderOpen,
   FileCheck,
   Trash2,
-  Cpu,
   ChevronDown,
   ChevronUp,
   FileText,
@@ -57,36 +56,33 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
       case "audio":
         return <Music className="w-4 h-4 text-pink-400 flex-shrink-0" />;
       case "docs":
-        return <FileText className="w-4 h-4 text-cyan-400 flex-shrink-0" />;
+        return <FileText className="w-4 h-4 text-emerald-400 flex-shrink-0" />;
       case "compressed":
         return <Archive className="w-4 h-4 text-amber-400 flex-shrink-0" />;
       case "programs":
-        return <Binary className="w-4 h-4 text-emerald-400 flex-shrink-0" />;
+        return <Binary className="w-4 h-4 text-teal-400 flex-shrink-0" />;
       default:
-        return <Layers className="w-4 h-4 text-indigo-400 flex-shrink-0" />;
+        return <Layers className="w-4 h-4 text-blue-400 flex-shrink-0" />;
     }
   };
 
   return (
-    <div className="w-full rounded-xl border border-purple-500/20 bg-slate-950/70 backdrop-blur-md overflow-hidden shadow-xl select-none">
+    <div className="w-full bg-[#111827] border border-[#1f2937] rounded-xl overflow-hidden shadow">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs border-collapse">
-          {/* Table Header */}
           <thead>
-            <tr className="border-b border-purple-500/20 bg-slate-900/80 text-[11px] font-bold text-slate-300 uppercase tracking-wider">
-              <th className="py-2.5 px-3 w-8">#</th>
+            <tr className="border-b border-[#1f2937] bg-[#162032] text-slate-200 text-[11px] font-bold uppercase tracking-wider select-none">
+              <th className="py-2.5 px-3 w-8 text-center">#</th>
               <th className="py-2.5 px-3">File Name</th>
               <th className="py-2.5 px-3 w-32">Size</th>
-              <th className="py-2.5 px-3 w-40">Progress</th>
+              <th className="py-2.5 px-3 w-48">Progress</th>
               <th className="py-2.5 px-3 w-28">Status</th>
               <th className="py-2.5 px-3 w-28">Speed</th>
               <th className="py-2.5 px-3 w-24">Time Left</th>
               <th className="py-2.5 px-3 w-28 text-right">Actions</th>
             </tr>
           </thead>
-
-          {/* Table Body */}
-          <tbody className="divide-y divide-purple-500/10 text-slate-200">
+          <tbody className="divide-y divide-[#1f2937]">
             {tasks.map((task, idx) => {
               const isSelected = selectedTaskId === task.id;
               const isExpanded = expandedId === task.id;
@@ -99,23 +95,23 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                 <React.Fragment key={task.id}>
                   <tr
                     onClick={() => onSelectTask(task.id)}
-                    className={`cursor-pointer transition-colors duration-150 ${
+                    className={`cursor-pointer transition-colors ${
                       isSelected
-                        ? "bg-purple-900/30 border-l-2 border-l-purple-400"
-                        : "hover:bg-purple-950/20"
+                        ? "bg-blue-900/30 text-white"
+                        : "hover:bg-[#1a2333] text-slate-200"
                     }`}
                   >
                     {/* Index */}
-                    <td className="py-2 px-3 text-slate-500 font-mono text-[10px]">
+                    <td className="py-2.5 px-3 text-center text-slate-400 font-mono text-[11px]">
                       {idx + 1}
                     </td>
 
-                    {/* File Name & Icon */}
-                    <td className="py-2 px-3 min-w-[200px] max-w-[320px]">
+                    {/* File Name */}
+                    <td className="py-2.5 px-3 font-semibold text-white max-w-xs truncate">
                       <div className="flex items-center space-x-2">
                         {getCategoryIcon(task.category)}
                         <span
-                          className="font-semibold truncate text-slate-100 hover:text-purple-300"
+                          className="truncate hover:underline"
                           title={task.filename}
                           onDoubleClick={() => isCompleted && onOpenFile(task.save_path)}
                         >
@@ -125,28 +121,28 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                     </td>
 
                     {/* Size */}
-                    <td className="py-2 px-3 font-mono text-[11px] text-slate-300">
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-200">
                       {formatBytes(task.downloaded_bytes)} /{" "}
                       {task.total_bytes > 0 ? formatBytes(task.total_bytes) : "Unknown"}
                     </td>
 
                     {/* Progress Bar & Percent */}
-                    <td className="py-2 px-3">
+                    <td className="py-2.5 px-3">
                       <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] font-mono">
-                          <span className="font-bold text-purple-300">{task.percent.toFixed(1)}%</span>
+                        <div className="flex justify-between text-[11px] font-mono font-bold">
+                          <span className="text-white">{task.percent.toFixed(1)}%</span>
                           {task.connections > 1 && (
-                            <span className="text-cyan-400">{task.connections} Chunks</span>
+                            <span className="text-blue-400">{task.connections} Chunks</span>
                           )}
                         </div>
-                        <div className="h-1.5 w-full bg-slate-900 rounded-full overflow-hidden border border-purple-500/15">
+                        <div className="h-2 w-full bg-[#0d1424] rounded-full overflow-hidden border border-[#1f2937]">
                           <div
                             className={`h-full rounded-full transition-all duration-200 ${
                               isCompleted
-                                ? "bg-gradient-to-r from-emerald-500 to-teal-400"
+                                ? "bg-emerald-500"
                                 : isError
                                 ? "bg-rose-500"
-                                : "bg-gradient-to-r from-purple-500 to-pink-500"
+                                : "bg-blue-500"
                             }`}
                             style={{ width: `${Math.min(100, Math.max(0, task.percent))}%` }}
                           />
@@ -155,18 +151,18 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                     </td>
 
                     {/* Status Badge */}
-                    <td className="py-2 px-3">
+                    <td className="py-2.5 px-3">
                       <span
-                        className={`text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
                           isDownloading
-                            ? "bg-purple-500/20 text-purple-300 border-purple-500/40 animate-pulse"
+                            ? "bg-blue-600/20 text-blue-300 border-blue-500/40 animate-pulse"
                             : isPaused
-                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                            ? "bg-amber-600/20 text-amber-300 border-amber-500/40"
                             : isCompleted
-                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                            ? "bg-emerald-600/20 text-emerald-300 border-emerald-500/40"
                             : isError
-                            ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
-                            : "bg-slate-800 text-slate-400 border-slate-700"
+                            ? "bg-rose-600/20 text-rose-300 border-rose-500/40"
+                            : "bg-slate-800 text-slate-300 border-slate-700"
                         }`}
                       >
                         {task.status}
@@ -174,22 +170,22 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                     </td>
 
                     {/* Speed */}
-                    <td className="py-2 px-3 font-mono font-semibold text-[11px] text-cyan-300">
-                      {isDownloading ? task.speed_formatted : "--"}
+                    <td className="py-2.5 px-3 font-mono font-bold text-[11px] text-sky-400">
+                      {isDownloading ? (task.speed_formatted || task.speed || "--") : "--"}
                     </td>
 
                     {/* Time Left (ETA) */}
-                    <td className="py-2 px-3 font-mono text-[11px] text-slate-400">
-                      {isDownloading ? task.eta_formatted : "--"}
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-300">
+                      {isDownloading ? (task.eta_formatted || task.eta || "--") : "--"}
                     </td>
 
                     {/* Action Buttons */}
-                    <td className="py-2 px-3 text-right">
+                    <td className="py-2.5 px-3 text-right">
                       <div className="flex items-center justify-end space-x-1" onClick={(e) => e.stopPropagation()}>
                         {isDownloading && (
                           <button
                             onClick={() => onPause(task.id)}
-                            className="p-1 rounded bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 transition-colors"
+                            className="p-1 rounded bg-[#1f2937] hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 transition-colors"
                             title="Pause"
                           >
                             <Pause className="w-3.5 h-3.5" />
@@ -199,7 +195,7 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                         {isPaused && (
                           <button
                             onClick={() => onResume(task.id)}
-                            className="p-1 rounded bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 transition-colors"
+                            className="p-1 rounded bg-[#1f2937] hover:bg-blue-500/20 text-blue-400 transition-colors"
                             title="Resume"
                           >
                             <Play className="w-3.5 h-3.5 fill-current" />
@@ -209,7 +205,7 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                         {isCompleted && (
                           <button
                             onClick={() => onOpenFile(task.save_path)}
-                            className="p-1 rounded bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 transition-colors"
+                            className="p-1 rounded bg-[#1f2937] hover:bg-emerald-500/20 text-emerald-400 transition-colors"
                             title="Open File"
                           >
                             <FileCheck className="w-3.5 h-3.5" />
@@ -218,7 +214,7 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
 
                         <button
                           onClick={() => onOpenFolder(task.save_path)}
-                          className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition-colors"
+                          className="p-1 rounded bg-[#1f2937] hover:bg-blue-500/20 text-slate-300 hover:text-white transition-colors"
                           title="Open Folder"
                         >
                           <FolderOpen className="w-3.5 h-3.5" />
@@ -226,75 +222,73 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
 
                         <button
                           onClick={() => onDelete(task.id)}
-                          className="p-1 rounded bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
+                          className="p-1 rounded bg-[#1f2937] hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 transition-colors"
                           title="Delete"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
 
-                        {/* Chunk expander toggle */}
-                        <button
-                          onClick={() => setExpandedId(isExpanded ? null : task.id)}
-                          className="p-1 rounded bg-purple-950/40 hover:bg-purple-900/40 text-purple-300 transition-colors"
-                          title="Inspect IDM Chunks & Speed"
-                        >
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                        </button>
+                        {/* Expand Chunk Drawer */}
+                        {task.chunks && task.chunks.length > 0 && (
+                          <button
+                            onClick={() => setExpandedId(isExpanded ? null : task.id)}
+                            className="p-1 rounded bg-[#1f2937] hover:bg-[#374151] text-slate-300 hover:text-white transition-colors"
+                            title="Toggle Chunks Drawer"
+                          >
+                            {isExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
 
-                  {/* IDM Segment Slicing & Speed Telemetry Drawer */}
-                  {isExpanded && (
-                    <tr className="bg-slate-950/90 border-b border-purple-500/20">
-                      <td colSpan={8} className="p-4 space-y-3">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="flex items-center space-x-1.5 font-bold text-purple-300">
-                            <Cpu className="w-4 h-4 text-purple-400" />
-                            <span>IDM Multi-Threaded Chunk Slicing ({task.chunks?.length || 1} Threads)</span>
-                          </span>
-                          <span className="text-slate-400 font-mono text-[11px] truncate max-w-md">
-                            URL: {task.url}
-                          </span>
-                        </div>
+                  {/* IDM 16-Chunk Drawer */}
+                  {isExpanded && task.chunks && task.chunks.length > 0 && (
+                    <tr className="bg-[#0d1424] border-b border-[#1f2937]">
+                      <td colSpan={8} className="p-3">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-[11px] text-slate-300">
+                            <span className="font-bold flex items-center space-x-1.5 text-white">
+                              <Zap className="w-3.5 h-3.5 text-yellow-400" />
+                              <span>Active Segments ({task.chunks.length} Threads)</span>
+                            </span>
+                            <span className="font-mono text-slate-400">
+                              Direct Stream Connections
+                            </span>
+                          </div>
 
-                        {/* Parallel Chunk Progress */}
-                        {task.chunks && task.chunks.length > 0 ? (
+                          {/* Grid of Chunk Progress Bars */}
                           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2">
-                            {task.chunks.map((chk) => (
+                            {task.chunks.map((chk, i) => (
                               <div
-                                key={chk.id}
-                                className="bg-slate-900/80 rounded-lg p-2 border border-purple-500/20 text-[10px] space-y-1"
+                                key={i}
+                                className="bg-[#162032] p-1.5 rounded border border-[#1f2937] space-y-1"
                               >
-                                <div className="flex justify-between font-mono">
-                                  <span className="text-slate-400">#Thread {chk.id + 1}</span>
-                                  <span className="text-cyan-300 font-bold">{chk.percent.toFixed(0)}%</span>
+                                <div className="flex justify-between text-[9px] font-mono text-slate-300">
+                                  <span className="font-bold text-white">T{i + 1}</span>
+                                  <span>{chk.percent.toFixed(0)}%</span>
                                 </div>
-                                <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden">
+                                <div className="h-1.5 w-full bg-[#0d1424] rounded overflow-hidden">
                                   <div
-                                    className="h-full bg-gradient-to-r from-purple-500 to-cyan-400 rounded-full transition-all"
+                                    className="h-full bg-blue-500 rounded transition-all duration-150"
                                     style={{ width: `${chk.percent}%` }}
                                   />
                                 </div>
                               </div>
                             ))}
                           </div>
-                        ) : (
-                          <div className="p-2 text-slate-500 text-[11px]">
-                            Single connection stream or waiting for segment initialization...
-                          </div>
-                        )}
 
-                        {/* Real-time Recharts Speed Chart */}
-                        {task.speedHistory && task.speedHistory.length > 0 && (
-                          <div className="pt-2 border-t border-purple-500/10">
-                            <div className="flex items-center justify-between text-[10px] text-pink-300 mb-1">
-                              <span className="font-semibold">Live Bandwidth Transfer Velocity</span>
-                              <span className="font-mono text-cyan-400">{task.speed_formatted}</span>
+                          {/* Speed Chart Telemetry */}
+                          {task.speedHistory && task.speedHistory.length > 0 && (
+                            <div className="pt-2">
+                              <SpeedChart data={task.speedHistory} height={40} compact />
                             </div>
-                            <SpeedChart data={task.speedHistory} height={60} />
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )}

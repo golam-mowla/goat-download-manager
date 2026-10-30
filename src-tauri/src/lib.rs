@@ -238,7 +238,8 @@ async fn start_local_bridge(app_handle: AppHandle) {
                     if let Some(url) = target_url {
                         let clean = url.trim().to_string();
                         if !clean.is_empty() {
-                            let _ = handle.emit("open-url", json!({ "url": clean }));
+                            let _ = handle.emit("open-url", clean.clone());
+                            let _ = handle.emit("gdm://open-url", clean.clone());
                             if let Some(win) = handle.get_webview_window("main") {
                                 let _ = win.unminimize();
                                 let _ = win.show();
@@ -307,6 +308,20 @@ fn register_windows_protocols() {
 fn get_pending_url(state: State<'_, AppUrlState>) -> Option<String> {
     let mut lock = state.pending_url.lock().ok()?;
     lock.take()
+}
+
+#[command]
+async fn ytdlp_get_info(url: String) -> Result<media::MediaInfo, String> {
+    media::fetch_media_info(url, None, None, None, None).await
+}
+
+#[command]
+async fn ytdlp_download(
+    app: AppHandle,
+    state: State<'_, DownloadState>,
+    options: media::DownloadOptions,
+) -> Result<String, String> {
+    media::start_download(app, state, options).await
 }
 
 // ---------------------------------------------------------------------------
@@ -404,7 +419,9 @@ pub fn run() {
             media::update_tool,
             media::open_folder,
             media::install_app_update,
-            get_pending_url
+            get_pending_url,
+            ytdlp_get_info,
+            ytdlp_download
         ])
         .run(tauri::generate_context!())
         .expect("error while running Goat Download Manager");
