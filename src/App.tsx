@@ -16,6 +16,7 @@ import { DownloadTableView } from "./components/DownloadTableView";
 import { DownloadItemCard } from "./components/DownloadItemCard";
 import { AddDownloadModal } from "./components/AddDownloadModal";
 import { PreferencesModal } from "./components/PreferencesModal";
+import { IdmDownloadDialog } from "./components/IdmDownloadDialog";
 import { DownloadTask } from "./types";
 
 export const App: React.FC = () => {
@@ -31,6 +32,26 @@ export const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [defaultDir, setDefaultDir] = useState("D:\\Downloads");
   const [bridgeOnline, setBridgeOnline] = useState(true);
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    return (localStorage.getItem("gdm-theme") as "dark" | "light") || "dark";
+  });
+  const [activePopupTask, setActivePopupTask] = useState<DownloadTask | null>(null);
+
+  useEffect(() => {
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+      document.documentElement.classList.remove("light");
+    } else {
+      document.documentElement.classList.add("light");
+      document.documentElement.classList.remove("dark");
+    }
+  }, [theme]);
+
+  const handleToggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    localStorage.setItem("gdm-theme", next);
+  };
 
   // Load existing tasks and default download folder on mount
   useEffect(() => {
@@ -73,8 +94,11 @@ export const App: React.FC = () => {
         const index = prev.findIndex((t) => t.id === updated.id);
         const now = new Date();
         const timeStr = `${now.getMinutes()}:${now.getSeconds()}`;
-        const speedBps = updated.speed_bps || updated.speed_bytes_per_sec || 0;
+        const speedBps = updated.speed_bps || updated.speedBps || updated.speed_bytes_per_sec || 0;
         const speedKb = Math.round(speedBps / 1024);
+        const downloadedBytes = updated.downloaded_bytes ?? updated.downloadedBytes ?? updated.downloaded ?? 0;
+        const totalBytes = updated.total_bytes ?? updated.totalBytes ?? updated.total ?? 0;
+        const isResumable = Boolean(updated.is_resumable ?? updated.isResumable ?? updated.supports_ranges ?? false);
 
         if (index >= 0) {
           const current = prev[index];
@@ -85,7 +109,14 @@ export const App: React.FC = () => {
           updatedList[index] = {
             ...current,
             ...updated,
+            downloaded_bytes: downloadedBytes || current.downloaded_bytes || 0,
+            downloadedBytes: downloadedBytes || current.downloadedBytes || 0,
+            total_bytes: totalBytes || current.total_bytes || current.totalBytes || 0,
+            totalBytes: totalBytes || current.total_bytes || current.totalBytes || 0,
+            is_resumable: isResumable || current.is_resumable || current.isResumable || false,
+            isResumable: isResumable || current.isResumable || current.is_resumable || false,
             speed_bytes_per_sec: speedBps,
+            speedBps,
             speedHistory: newHistory,
           };
           return updatedList;
@@ -93,7 +124,14 @@ export const App: React.FC = () => {
           return [
             {
               ...updated,
+              downloaded_bytes: downloadedBytes,
+              downloadedBytes,
+              total_bytes: totalBytes,
+              totalBytes,
+              is_resumable: isResumable,
+              isResumable,
               speed_bytes_per_sec: speedBps,
+              speedBps,
               speedHistory: [{ time: timeStr, speedKb }],
             },
             ...prev,
@@ -260,30 +298,52 @@ export const App: React.FC = () => {
     }
   };
 
+  const currentPopupTask = useMemo(() => {
+    if (!activePopupTask) return null;
+    return tasks.find((t) => t.id === activePopupTask.id) || activePopupTask;
+  }, [tasks, activePopupTask]);
+
   const handleAddDirectDownload = async (
     url: string,
     savePath: string,
     filename: string,
     connections: number
   ) => {
-    await invoke<string>("start_http_download", {
-      url,
-      saveFolder: savePath || null,
-      filename: filename || null,
-      chunkCount: connections,
-    });
-    const updated = await invoke<DownloadTask[]>("get_all_downloads");
-    setTasks(updated);
+    try {
+      const taskId = await invoke<string>("start_http_download", {
+        url,
+        saveFolder: savePath || null,
+        filename: filename || null,
+        chunkCount: connections,
+      });
+      const updated = await invoke<DownloadTask[]>("get_all_downloads");
+      setTasks(updated);
+      if (taskId) {
+        const created = updated.find((t) => t.id === taskId);
+        if (created) setActivePopupTask(created);
+      }
+    } catch (e) {
+      console.error("Direct download failed to start:", e);
+    }
   };
 
   const handleAddMediaDownload = async (options: any) => {
     try {
-      await invoke("ytdlp_download", { options });
+      let taskId = "";
+      try {
+        taskId = await invoke<string>("ytdlp_download", { options });
+      } catch {
+        taskId = await invoke<string>("start_download", { options });
+      }
+      const updated = await invoke<DownloadTask[]>("get_all_downloads");
+      setTasks(updated);
+      if (taskId) {
+        const created = updated.find((t) => t.id === taskId);
+        if (created) setActivePopupTask(created);
+      }
     } catch (e) {
-      await invoke("start_download", { options });
+      console.error("Media download failed to start:", e);
     }
-    const updated = await invoke<DownloadTask[]>("get_all_downloads");
-    setTasks(updated);
   };
 
   // Category counts
@@ -368,8 +428,14 @@ export const App: React.FC = () => {
     return tasks.find((t) => t.id === selectedTaskId) || null;
   }, [tasks, selectedTaskId]);
 
+  const isDark = theme === "dark";
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 font-sans text-slate-100">
+    <div
+      className={`flex h-screen w-screen overflow-hidden font-sans transition-colors duration-150 ${
+        isDark ? "bg-[#0b1120] text-slate-100" : "bg-[#f8fafc] text-slate-900"
+      }`}
+    >
       {/* Left Sidebar (IDM Category Tree + Status) */}
       <Sidebar
         selectedCategory={selectedCategory}
@@ -384,6 +450,7 @@ export const App: React.FC = () => {
           setModalInitialUrl("");
           setIsAddModalOpen(true);
         }}
+        theme={theme}
       />
 
       {/* Main Workspace */}
@@ -408,10 +475,17 @@ export const App: React.FC = () => {
           hasSelected={Boolean(selectedTaskId)}
           hasActive={activeCount > 0}
           hasCompleted={statusCounts.completed > 0}
+          theme={theme}
         />
 
         {/* Top Search, Status & View Toggle Bar */}
-        <div className="px-5 py-2.5 glass-panel border-b border-purple-500/15 flex items-center justify-between gap-4 z-10 select-none">
+        <div
+          className={`px-5 py-2.5 border-b flex items-center justify-between gap-4 z-10 select-none transition-colors ${
+            isDark
+              ? "bg-[#0e1626] border-[#1e293b]"
+              : "bg-white border-slate-200"
+          }`}
+        >
           {/* Search Bar */}
           <div className="flex-1 max-w-md">
             <TopBar
@@ -427,17 +501,27 @@ export const App: React.FC = () => {
                 setIsAddModalOpen(true);
               }}
               onClearCompleted={handleClearCompleted}
+              theme={theme}
+              onToggleTheme={handleToggleTheme}
             />
           </div>
 
           {/* View Mode Toggle (Table / Card) */}
-          <div className="flex items-center space-x-1 p-1 rounded-xl bg-slate-900/90 border border-purple-500/20">
+          <div
+            className={`flex items-center space-x-1 p-1 rounded-xl border transition-colors ${
+              isDark
+                ? "bg-[#111827] border-[#1e293b]"
+                : "bg-slate-100 border-slate-300"
+            }`}
+          >
             <button
               onClick={() => setViewMode("table")}
               className={`p-1.5 rounded-lg transition-all ${
                 viewMode === "table"
-                  ? "bg-purple-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-white"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : isDark
+                  ? "text-slate-400 hover:text-white"
+                  : "text-slate-500 hover:text-slate-900"
               }`}
               title="Classic IDM Table View"
             >
@@ -447,8 +531,10 @@ export const App: React.FC = () => {
               onClick={() => setViewMode("cards")}
               className={`p-1.5 rounded-lg transition-all ${
                 viewMode === "cards"
-                  ? "bg-purple-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-white"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : isDark
+                  ? "text-slate-400 hover:text-white"
+                  : "text-slate-500 hover:text-slate-900"
               }`}
               title="Modern Card View"
             >
@@ -471,10 +557,10 @@ export const App: React.FC = () => {
               </div>
 
               <div className="max-w-md space-y-2">
-                <h2 className="text-xl font-bold text-white">
+                <h2 className={`text-xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
                   Goat Download Manager (GDM)
                 </h2>
-                <p className="text-xs text-slate-300 leading-relaxed">
+                <p className={`text-xs leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
                   High-speed 16-segment HTTP download acceleration & all-in-one social media stream extractor.
                   Paste any download link above or use the browser extension to intercept downloads.
                 </p>
@@ -497,7 +583,11 @@ export const App: React.FC = () => {
             <DownloadTableView
               tasks={filteredTasks}
               selectedTaskId={selectedTaskId}
-              onSelectTask={setSelectedTaskId}
+              onSelectTask={(id) => {
+                setSelectedTaskId(id);
+                const task = tasks.find((t) => t.id === id);
+                if (task) setActivePopupTask(task);
+              }}
               onPause={handlePause}
               onResume={handleResume}
               onDelete={handleDelete}
@@ -523,6 +613,21 @@ export const App: React.FC = () => {
           )}
         </main>
       </div>
+
+      {/* IDM Style Download Dialog / Popup Window */}
+      {currentPopupTask && (
+        <IdmDownloadDialog
+          task={currentPopupTask}
+          isOpen={Boolean(currentPopupTask)}
+          onClose={() => setActivePopupTask(null)}
+          onPause={handlePause}
+          onResume={handleResume}
+          onCancel={handleCancel}
+          onOpenFile={handleOpenFile}
+          onOpenFolder={handleOpenFolder}
+          theme={theme}
+        />
+      )}
 
       {/* Add Download Modal */}
       <AddDownloadModal

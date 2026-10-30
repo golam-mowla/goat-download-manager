@@ -20,7 +20,14 @@ import {
   Binary,
   Layers,
 } from "lucide-react";
-import { DownloadTask } from "../types";
+import {
+  DownloadTask,
+  formatBytes,
+  getDownloadedBytes,
+  getTotalBytes,
+  getChunkCount,
+  getIsResumable,
+} from "../types";
 import { SpeedChart } from "./SpeedChart";
 
 interface DownloadItemCardProps {
@@ -63,13 +70,6 @@ export const DownloadItemCard: React.FC<DownloadItemCardProps> = ({
     }
   };
 
-  const formatBytes = (bytes: number) => {
-    if (bytes <= 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB", "TB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
 
   const isDownloading = task.status === "downloading";
   const isPaused = task.status === "paused";
@@ -96,7 +96,7 @@ export const DownloadItemCard: React.FC<DownloadItemCardProps> = ({
               <h3
                 className="font-semibold text-sm text-slate-100 truncate cursor-pointer hover:text-purple-300 transition-colors"
                 title={task.filename}
-                onClick={() => isCompleted && onOpenFile(task.save_path)}
+                onClick={() => isCompleted && onOpenFile(task.save_path || task.savePath || "")}
               >
                 {task.filename}
               </h3>
@@ -119,11 +119,19 @@ export const DownloadItemCard: React.FC<DownloadItemCardProps> = ({
               </span>
 
               {/* Connections / Chunks Badge */}
-              {task.connections > 1 && (
+              {getChunkCount(task) > 1 && (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/40 text-cyan-300 border border-cyan-500/30 font-mono">
-                  {task.connections} Segments
+                  {getChunkCount(task)} Segments
                 </span>
               )}
+              {/* Resume Badge */}
+              <span className={`text-[10px] px-2 py-0.5 rounded-full border font-mono ${
+                getIsResumable(task)
+                  ? "bg-emerald-950/40 text-emerald-300 border-emerald-500/30"
+                  : "bg-rose-950/40 text-rose-300 border-rose-500/30"
+              }`}>
+                Resume: {getIsResumable(task) ? "Yes" : "No"}
+              </span>
             </div>
 
             {/* Sub-text: URL and Destination */}
@@ -168,14 +176,14 @@ export const DownloadItemCard: React.FC<DownloadItemCardProps> = ({
           {isCompleted && (
             <>
               <button
-                onClick={() => onOpenFile(task.save_path)}
+                onClick={() => onOpenFile(task.save_path || task.savePath || "")}
                 className="p-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-500/30 transition-all"
                 title="Open File"
               >
                 <FileCheck className="w-4 h-4" />
               </button>
               <button
-                onClick={() => onOpenFolder(task.save_path)}
+                onClick={() => onOpenFolder(task.save_path || task.savePath || "")}
                 className="p-2 rounded-xl bg-slate-800/60 hover:bg-slate-700/60 text-slate-300 border border-slate-700/50 transition-all"
                 title="Open Containing Folder"
               >
@@ -221,7 +229,8 @@ export const DownloadItemCard: React.FC<DownloadItemCardProps> = ({
               {task.percent.toFixed(1)}%
             </span>
             <span>
-              {formatBytes(task.downloaded_bytes)} / {task.total_bytes > 0 ? formatBytes(task.total_bytes) : "Unknown size"}
+              {formatBytes(getDownloadedBytes(task))} /{" "}
+              {getTotalBytes(task) > 0 ? formatBytes(getTotalBytes(task)) : "Unknown size"}
             </span>
           </div>
 

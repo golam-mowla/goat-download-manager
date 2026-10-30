@@ -15,7 +15,14 @@ import {
   Layers,
   Zap,
 } from "lucide-react";
-import { DownloadTask } from "../types";
+import {
+  DownloadTask,
+  formatBytes,
+  getDownloadedBytes,
+  getTotalBytes,
+  getChunkCount,
+  getIsResumable,
+} from "../types";
 import { SpeedChart } from "./SpeedChart";
 
 interface DownloadTableViewProps {
@@ -41,13 +48,6 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const formatBytes = (bytes: number) => {
-    if (bytes <= 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB", "TB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
-  };
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
@@ -113,17 +113,31 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                         <span
                           className="truncate hover:underline"
                           title={task.filename}
-                          onDoubleClick={() => isCompleted && onOpenFile(task.save_path)}
+                          onDoubleClick={() => isCompleted && onOpenFile(task.save_path || task.savePath || "")}
                         >
                           {task.filename}
                         </span>
                       </div>
                     </td>
 
-                    {/* Size */}
+                    {/* Size & Resume Capability */}
                     <td className="py-2.5 px-3 font-mono text-[11px] text-slate-200">
-                      {formatBytes(task.downloaded_bytes)} /{" "}
-                      {task.total_bytes > 0 ? formatBytes(task.total_bytes) : "Unknown"}
+                      <div>
+                        {formatBytes(getDownloadedBytes(task))} /{" "}
+                        {getTotalBytes(task) > 0 ? formatBytes(getTotalBytes(task)) : "Unknown"}
+                      </div>
+                      <div className="flex items-center space-x-1.5 mt-0.5">
+                        <span className="text-[10px] text-slate-400 font-sans">Resume:</span>
+                        {getIsResumable(task) ? (
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1 py-0.2 rounded border border-emerald-500/20">
+                            Yes
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-1 py-0.2 rounded border border-rose-500/20">
+                            No
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Progress Bar & Percent */}
@@ -131,8 +145,8 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                       <div className="space-y-1">
                         <div className="flex justify-between text-[11px] font-mono font-bold">
                           <span className="text-white">{task.percent.toFixed(1)}%</span>
-                          {task.connections > 1 && (
-                            <span className="text-blue-400">{task.connections} Chunks</span>
+                          {getChunkCount(task) > 1 && (
+                            <span className="text-blue-400">{getChunkCount(task)} Chunks</span>
                           )}
                         </div>
                         <div className="h-2 w-full bg-[#0d1424] rounded-full overflow-hidden border border-[#1f2937]">
@@ -204,7 +218,7 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
 
                         {isCompleted && (
                           <button
-                            onClick={() => onOpenFile(task.save_path)}
+                            onClick={() => onOpenFile(task.save_path || task.savePath || "")}
                             className="p-1 rounded bg-[#1f2937] hover:bg-emerald-500/20 text-emerald-400 transition-colors"
                             title="Open File"
                           >
@@ -212,8 +226,20 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                           </button>
                         )}
 
+                        {/* Open IDM Download Status Dialog */}
                         <button
-                          onClick={() => onOpenFolder(task.save_path)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectTask(task.id);
+                          }}
+                          className="p-1 rounded bg-[#1f2937] hover:bg-blue-500/20 text-slate-300 hover:text-white transition-colors"
+                          title="Open IDM Download Status Dialog"
+                        >
+                          <span className="text-xs">🐐</span>
+                        </button>
+
+                        <button
+                          onClick={() => onOpenFolder(task.save_path || task.savePath || "")}
                           className="p-1 rounded bg-[#1f2937] hover:bg-blue-500/20 text-slate-300 hover:text-white transition-colors"
                           title="Open Folder"
                         >

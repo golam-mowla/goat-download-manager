@@ -28,6 +28,7 @@ interface SidebarProps {
   bridgeOnline: boolean;
   onOpenSettings: () => void;
   onOpenMediaModal: () => void;
+  theme?: "dark" | "light";
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -40,7 +41,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   bridgeOnline,
   onOpenSettings,
   onOpenMediaModal,
+  theme = "dark",
 }) => {
+  const isDark = theme === "dark";
   const categories: { id: CategoryType; label: string; icon: React.ReactNode }[] = [
     { id: "all", label: "All Downloads", icon: <Layers className="w-4 h-4 text-blue-400" /> },
     { id: "compressed", label: "Compressed", icon: <Archive className="w-4 h-4 text-amber-400" /> },
@@ -58,7 +61,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-64 h-screen flex flex-col justify-between bg-[#111827] border-r border-[#1f2937] p-3.5 z-20 select-none overflow-y-auto">
+    <aside
+      className={`w-64 h-screen flex flex-col justify-between border-r p-3.5 z-20 select-none overflow-y-auto transition-colors ${
+        isDark ? "bg-[#111827] border-[#1f2937] text-slate-100" : "bg-white border-slate-200 text-slate-800"
+      }`}
+    >
       {/* Top Section */}
       <div className="space-y-4">
         {/* Goat Branding */}
@@ -73,14 +80,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <div className="flex flex-col">
             <div className="flex items-center space-x-1.5">
-              <span className="font-black text-sm tracking-tight text-white">
+              <span className={`font-black text-sm tracking-tight ${isDark ? "text-white" : "text-slate-900"}`}>
                 GDM
               </span>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-blue-600/30 text-blue-300 border border-blue-500/40">
+              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-blue-600/30 text-blue-500 border border-blue-500/40">
                 PRO
               </span>
             </div>
-            <span className="text-[11px] font-medium text-slate-300">
+            <span className={`text-[11px] font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}>
               Goat Download Manager
             </span>
           </div>
@@ -102,7 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Categories Tree */}
         <div className="space-y-1">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-2 mb-1">
+          <p className={`text-[11px] font-bold uppercase tracking-wider px-2 mb-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
             Categories
           </p>
           {categories.map((cat) => {
@@ -118,7 +125,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
                   isSelected
                     ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-200 hover:bg-[#1f2937] hover:text-white"
+                    : isDark
+                    ? "text-slate-200 hover:bg-[#1f2937] hover:text-white"
+                    : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
@@ -129,7 +138,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${
                     isSelected
                       ? "bg-black/30 text-white"
-                      : "bg-[#1f2937] text-slate-300"
+                      : isDark
+                      ? "bg-[#1f2937] text-slate-300"
+                      : "bg-slate-100 text-slate-600"
                   }`}
                 >
                   {count}
@@ -140,8 +151,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Status Queue Filters */}
-        <div className="space-y-1 pt-2 border-t border-[#1f2937]">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-2 mb-1">
+        <div className={`space-y-1 pt-2 border-t ${isDark ? "border-[#1f2937]" : "border-slate-200"}`}>
+          <p className={`text-[11px] font-bold uppercase tracking-wider px-2 mb-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
             Status Queue
           </p>
           {statuses.map((st) => {
@@ -154,7 +165,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
                   isSelected
                     ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-200 hover:bg-[#1f2937] hover:text-white"
+                    : isDark
+                    ? "text-slate-200 hover:bg-[#1f2937] hover:text-white"
+                    : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
@@ -166,7 +179,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${
                       isSelected
                         ? "bg-black/30 text-white"
-                        : "bg-[#1f2937] text-slate-300"
+                        : isDark
+                        ? "bg-[#1f2937] text-slate-300"
+                        : "bg-slate-100 text-slate-600"
                     }`}
                   >
                     {count}
@@ -179,16 +194,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom Section */}
-      <div className="pt-3 border-t border-[#1f2937] space-y-2">
+      <div className={`pt-3 border-t space-y-2 ${isDark ? "border-[#1f2937]" : "border-slate-200"}`}>
         {/* Browser Extension Bridge Status */}
-        <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#0d1424] border border-[#1f2937] text-[11px]">
+        <div className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-[11px] ${
+          isDark ? "bg-[#0d1424] border-[#1f2937]" : "bg-slate-50 border-slate-200"
+        }`}>
           <div className="flex items-center space-x-2">
             <span
               className={`w-2 h-2 rounded-full ${
                 bridgeOnline ? "bg-emerald-400 shadow-[0_0_6px_#34d399]" : "bg-rose-500"
               }`}
             />
-            <span className="font-semibold text-slate-200">Browser Bridge</span>
+            <span className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-700"}`}>Browser Bridge</span>
           </div>
           <span className="font-mono text-[10px] text-slate-400 font-bold">
             :9666
@@ -198,7 +215,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Settings button */}
         <button
           onClick={onOpenSettings}
-          className="w-full flex items-center space-x-2 px-2.5 py-2 rounded-lg text-slate-300 hover:text-white hover:bg-[#1f2937] transition-colors text-xs font-semibold"
+          className={`w-full flex items-center space-x-2 px-2.5 py-2 rounded-lg transition-colors text-xs font-semibold ${
+            isDark
+              ? "text-slate-300 hover:text-white hover:bg-[#1f2937]"
+              : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+          }`}
         >
           <Settings className="w-4 h-4 text-slate-400" />
           <span>Options & Settings</span>

@@ -48,6 +48,7 @@ pub struct DownloadTask {
     pub status: String, // "queued" | "downloading" | "paused" | "assembling" | "completed" | "error" | "cancelled"
     pub category: String, // "all" | "video" | "audio" | "docs" | "compressed" | "programs"
     pub chunk_count: usize,
+    pub is_resumable: bool,
     pub chunks: Vec<ChunkProgress>,
     pub speed_history: Vec<u64>,
     pub error_message: Option<String>,
@@ -289,51 +290,106 @@ pub async fn execute_multithreaded_download(
         let shared_downloaded = shared_downloaded.clone();
 
         let handle = tauri::async_runtime::spawn(async move {
-            let mut file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .read(true)
-                .open(&part_file_path)
-                .await
-                .map_err(|e| e.to_string())?;
+            let mut retries = 0;
+            const MAX_RETRIES: usize = 12;
 
-            let current_len = file.metadata().await.map(|m| m.len()).unwrap_or(0);
-            shared_downloaded.fetch_add(current_len, Ordering::Relaxed);
+            loop {
+                let mut file = OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .read(true)
+                    .open(&part_file_path)
+                    .await
+                    .map_err(|e| e.to_string())?;
 
-            let chunk_start = start + current_len;
-            if chunk_start > end && end > 0 {
-                return Ok(());
-            }
+                let current_len = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+                let chunk_start = start + current_len;
 
-            let mut req = client.get(&url)
-                .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) GDM/1.0.0");
+                if end > 0 && chunk_start > end {
+                    let _ = file.flush().await;
+                    return Ok::<(), String>(());
+                }
 
-            if end > 0 {
-                req = req.header(RANGE, format!("bytes={}-{}", chunk_start, end));
-            }
+                file.seek(SeekFrom::End(0)).await.map_err(|e| e.to_string())?;
 
-            let mut resp = req.send().await.map_err(|e| e.to_string())?;
-            if !resp.status().is_success() && resp.status() != reqwest::StatusCode::PARTIAL_CONTENT {
-                return Err(format!("Chunk {} HTTP error {}", index, resp.status()));
-            }
+                let mut req = client.get(&url)
+                    .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                    .header("Accept", "*/*")
+                    .header("Referer", &url);
 
-            file.seek(SeekFrom::End(0)).await.map_err(|e| e.to_string())?;
+                if end > 0 {
+                    req = req.header(RANGE, format!("bytes={}-{}", chunk_start, end));
+                } else if chunk_start > 0 {
+                    req = req.header(RANGE, format!("bytes={}-", chunk_start));
+                }
 
-            while let Some(chunk_res) = resp.chunk().await.transpose() {
-                tokio::select! {
-                    _ = chunk_cancel.recv() => {
-                        return Err("Cancelled".to_string());
+                let send_res = req.send().await;
+                let mut resp = match send_res {
+                    Ok(r) => {
+                        if !r.status().is_success() && r.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+                            if retries < MAX_RETRIES {
+                                retries += 1;
+                                tokio::time::sleep(Duration::from_millis(1000 * retries as u64)).await;
+                                continue;
+                            }
+                            return Err(format!("Chunk {} HTTP status {}", index, r.status()));
+                        }
+                        r
                     }
-                    res = async { chunk_res } => {
-                        let bytes = res.map_err(|e| e.to_string())?;
-                        file.write_all(&bytes).await.map_err(|e| e.to_string())?;
-                        shared_downloaded.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+                    Err(e) => {
+                        if retries < MAX_RETRIES {
+                            retries += 1;
+                            tokio::time::sleep(Duration::from_millis(1000 * retries as u64)).await;
+                            continue;
+                        }
+                        return Err(format!("Chunk {} connect failed: {}", index, e));
+                    }
+                };
+
+                let mut stream_interrupted = false;
+                loop {
+                    tokio::select! {
+                        _ = chunk_cancel.recv() => {
+                            return Err("Cancelled".to_string());
+                        }
+                        chunk_res = resp.chunk() => {
+                            match chunk_res {
+                                Ok(Some(bytes)) => {
+                                    if let Err(e) = file.write_all(&bytes).await {
+                                        return Err(e.to_string());
+                                    }
+                                    shared_downloaded.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+                                    // Reset retry count upon successfully receiving bytes
+                                    retries = 0;
+                                }
+                                Ok(None) => {
+                                    // Reached end of current stream
+                                    break;
+                                }
+                                Err(e) => {
+                                    eprintln!("Chunk {} stream interrupted: {}. Reconnecting...", index, e);
+                                    stream_interrupted = true;
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
-            }
 
-            file.flush().await.map_err(|e| e.to_string())?;
-            Ok::<(), String>(())
+                let _ = file.flush().await;
+
+                if !stream_interrupted {
+                    return Ok::<(), String>(());
+                }
+
+                if retries < MAX_RETRIES {
+                    retries += 1;
+                    tokio::time::sleep(Duration::from_millis(800 * retries as u64)).await;
+                    continue;
+                } else {
+                    return Err(format!("Chunk {} connection dropped after {} retries", index, MAX_RETRIES));
+                }
+            }
         });
 
         chunk_join_handles.push(handle);

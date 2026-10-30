@@ -81,6 +81,7 @@ async fn start_http_download(
         status: "queued".to_string(),
         category,
         chunk_count: chunks,
+        is_resumable: meta.supports_ranges,
         chunks: Vec::new(),
         speed_history: Vec::new(),
         error_message: None,

@@ -22,25 +22,38 @@ export interface DownloadTask {
   filename: string;
   title?: string;
   customFilename?: string;
-  save_path: string;
+  save_path?: string;
+  savePath?: string;
   saveFolder?: string;
-  total_bytes: number;
-  downloaded_bytes: number;
+  total_bytes?: number;
+  totalBytes?: number;
+  downloaded_bytes?: number;
+  downloadedBytes?: number;
   percent: number;
-  speed_bytes_per_sec: number;
-  speed_formatted: string;
+  speed_bytes_per_sec?: number;
+  speed_bps?: number;
+  speedBps?: number;
+  speed_formatted?: string;
+  speedFormatted?: string;
   speed?: string;
-  eta_seconds: number;
-  eta_formatted: string;
+  eta_seconds?: number;
+  eta_formatted?: string;
+  etaFormatted?: string;
   eta?: string;
   progressText?: string;
   status: TaskStatus;
   category: "all" | "video" | "audio" | "docs" | "compressed" | "programs" | string;
-  connections: number;
-  is_resumable: boolean;
+  chunk_count?: number;
+  chunkCount?: number;
+  connections?: number;
+  is_resumable?: boolean;
+  isResumable?: boolean;
+  supports_ranges?: boolean;
+  supportsRanges?: boolean;
   error?: string | null;
-  created_at: number;
-  createdAt?: number;
+  errorMessage?: string | null;
+  created_at?: string | number;
+  createdAt?: string | number;
   completed_at?: number | null;
   chunks?: ChunkProgress[];
   speedHistory?: { time: string; speedKb: number }[];
@@ -49,6 +62,39 @@ export interface DownloadTask {
   qualityLabel?: string;
   options?: any;
 }
+
+export const getDownloadedBytes = (t: DownloadTask | any): number => {
+  if (!t) return 0;
+  const val = t.downloaded_bytes ?? t.downloadedBytes ?? t.downloaded ?? 0;
+  return typeof val === "number" && !isNaN(val) ? val : 0;
+};
+
+export const getTotalBytes = (t: DownloadTask | any): number => {
+  if (!t) return 0;
+  const val = t.total_bytes ?? t.totalBytes ?? t.total ?? 0;
+  return typeof val === "number" && !isNaN(val) ? val : 0;
+};
+
+export const getChunkCount = (t: DownloadTask | any): number => {
+  if (!t) return 1;
+  return t.chunk_count ?? t.chunkCount ?? t.connections ?? (t.chunks?.length || 1);
+};
+
+export const getIsResumable = (t: DownloadTask | any): boolean => {
+  if (!t) return false;
+  return Boolean(t.is_resumable ?? t.isResumable ?? t.supports_ranges ?? t.supportsRanges ?? false);
+};
+
+export const formatBytes = (bytes: number | null | undefined): string => {
+  if (bytes === undefined || bytes === null || isNaN(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  if (i < 0 || i >= sizes.length || isNaN(i)) return "0 B";
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+};
 
 export interface DownloadProgress {
   percent: number;

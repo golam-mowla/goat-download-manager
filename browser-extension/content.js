@@ -104,45 +104,61 @@
     const btn = document.createElement("div");
     btn.id = "gdm-floating-grabber";
     btn.innerHTML = `
-      <div style="display:flex;align-items:center;gap:6px;">
-        <span style="font-size:15px;line-height:1;">🐐</span>
-        <span style="font-size:11px;font-weight:700;letter-spacing:0.3px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;color:#ffffff;">Download this video</span>
+      <div style="display:flex;align-items:center;gap:6px;padding:0 2px;">
+        <span style="display:inline-block;color:#16a34a;font-size:12px;font-weight:900;text-shadow:0 1px 1px rgba(0,0,0,0.2);">▶</span>
+        <span style="font-size:12px;font-weight:800;letter-spacing:0.2px;font-family:Arial,Tahoma,sans-serif;color:#dc2626;text-shadow:0 1px 0 #ffffff;">Download this video</span>
+        <span style="font-size:11px;color:#475569;font-weight:bold;margin-left:4px;padding:0 3px;border-left:1px solid #94a3b8;cursor:pointer;" title="Goat Download Manager (GDM)" id="gdm-help-btn">?</span>
+        <span style="font-size:11px;color:#475569;font-weight:bold;padding:0 2px;cursor:pointer;" title="Hide overlay" id="gdm-close-btn">✕</span>
       </div>
     `;
 
-    // Styling: Sleek IDM dark translucent bar with blue accent
+    // Authentic IDM overlay styling matching user screenshot
     Object.assign(btn.style, {
       position: "fixed",
       zIndex: "2147483647",
       display: "none",
       alignItems: "center",
-      padding: "5px 10px",
-      borderRadius: "6px",
-      background: "rgba(17, 24, 39, 0.95)",
-      border: "1px solid rgba(59, 130, 246, 0.6)",
-      color: "#ffffff",
-      boxShadow: "0 4px 14px rgba(0,0,0,0.5), 0 0 10px rgba(59,130,246,0.3)",
+      padding: "4px 8px",
+      borderRadius: "4px",
+      background: "linear-gradient(180deg, #ffffff 0%, #f1f5f9 50%, #e2e8f0 100%)",
+      border: "1px solid #64748b",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.9)",
       cursor: "pointer",
       userSelect: "none",
-      transition: "opacity 0.15s ease, transform 0.15s ease",
-      backdropFilter: "blur(6px)",
+      transition: "opacity 0.15s ease, transform 0.1s ease",
       opacity: "0",
       pointerEvents: "none",
     });
 
     btn.addEventListener("mouseenter", () => {
       clearTimeout(hideTimer);
-      btn.style.transform = "scale(1.03)";
-      btn.style.borderColor = "#3b82f6";
-      btn.style.boxShadow = "0 6px 20px rgba(59,130,246,0.5)";
+      btn.style.transform = "scale(1.02)";
+      btn.style.borderColor = "#2563eb";
+      btn.style.boxShadow = "0 3px 12px rgba(37,99,235,0.4), inset 0 1px 0 #ffffff";
     });
 
     btn.addEventListener("mouseleave", () => {
       btn.style.transform = "scale(1)";
+      btn.style.borderColor = "#64748b";
+      btn.style.boxShadow = "0 2px 8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.9)";
       scheduleHide();
     });
 
     btn.addEventListener("click", (e) => {
+      const target = e.target;
+      if (target && target.id === "gdm-close-btn") {
+        e.stopPropagation();
+        e.preventDefault();
+        btn.style.display = "none";
+        return;
+      }
+      if (target && target.id === "gdm-help-btn") {
+        e.stopPropagation();
+        e.preventDefault();
+        showToast("Goat Download Manager 🐐", "GDM 16-Segment HTTP & Video Extractor", "info");
+        return;
+      }
+
       e.stopPropagation();
       e.preventDefault();
 

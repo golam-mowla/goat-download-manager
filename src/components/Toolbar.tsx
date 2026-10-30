@@ -24,6 +24,7 @@ interface ToolbarProps {
   hasSelected: boolean;
   hasActive: boolean;
   hasCompleted: boolean;
+  theme?: "dark" | "light";
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -39,9 +40,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   hasSelected,
   hasActive,
   hasCompleted,
+  theme = "dark",
 }) => {
+  const isDark = theme === "dark";
+
   return (
-    <div className="h-14 px-4 bg-[#111827] border-b border-[#1f2937] flex items-center justify-between gap-2 z-10 select-none overflow-x-auto">
+    <div
+      className={`h-14 px-4 border-b flex items-center justify-between gap-2 z-10 select-none overflow-x-auto transition-colors ${
+        isDark ? "bg-[#111827] border-[#1f2937]" : "bg-white border-slate-200"
+      }`}
+    >
       {/* Primary Action Buttons */}
       <div className="flex items-center space-x-2 flex-shrink-0">
         {/* Add URL */}
@@ -58,7 +66,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <button
           onClick={onResumeSelected}
           disabled={!hasSelected}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#1f2937] hover:bg-[#374151] text-emerald-300 text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors border ${
+            isDark
+              ? "bg-[#1f2937] hover:bg-[#374151] text-emerald-300 border-transparent"
+              : "bg-slate-50 hover:bg-slate-100 text-emerald-600 border-slate-200"
+          }`}
           title="Resume selected download"
         >
           <Play className="w-3.5 h-3.5 fill-current" />
@@ -69,7 +81,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <button
           onClick={onPauseSelected}
           disabled={!hasSelected}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#1f2937] hover:bg-[#374151] text-amber-300 text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors border ${
+            isDark
+              ? "bg-[#1f2937] hover:bg-[#374151] text-amber-300 border-transparent"
+              : "bg-slate-50 hover:bg-slate-100 text-amber-600 border-slate-200"
+          }`}
           title="Pause selected download"
         >
           <Pause className="w-3.5 h-3.5" />
@@ -80,7 +96,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <button
           onClick={onStopAll}
           disabled={!hasActive}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#1f2937] hover:bg-[#374151] text-rose-300 text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors border ${
+            isDark
+              ? "bg-[#1f2937] hover:bg-[#374151] text-rose-300 border-transparent"
+              : "bg-slate-50 hover:bg-slate-100 text-rose-600 border-slate-200"
+          }`}
           title="Stop all active downloads"
         >
           <Square className="w-3.5 h-3.5" />
@@ -91,7 +111,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <button
           onClick={onDeleteSelected}
           disabled={!hasSelected}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#1f2937] hover:bg-[#374151] text-slate-200 hover:text-rose-400 text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors border ${
+            isDark
+              ? "bg-[#1f2937] hover:bg-[#374151] text-slate-200 hover:text-rose-400 border-transparent"
+              : "bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-rose-600 border-slate-200"
+          }`}
           title="Delete selected download"
         >
           <Trash2 className="w-3.5 h-3.5" />
@@ -102,7 +126,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <button
           onClick={onClearCompleted}
           disabled={!hasCompleted}
-          className="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#1f2937] hover:bg-[#374151] text-slate-300 hover:text-white text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          className={`hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 disabled:pointer-events-none transition-colors border ${
+            isDark
+              ? "bg-[#1f2937] hover:bg-[#374151] text-slate-300 hover:text-white border-transparent"
+              : "bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border-slate-200"
+          }`}
           title="Clear finished downloads from list"
         >
           <CheckCheck className="w-3.5 h-3.5" />
@@ -115,7 +143,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         {/* Media Grabber */}
         <button
           onClick={onOpenMediaGrabber}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-colors shadow"
+          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors shadow"
           title="Open Media Extractor"
         >
           <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
@@ -125,19 +153,27 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         {/* Open Download Folder */}
         <button
           onClick={onOpenDefaultFolder}
-          className="p-2 rounded-lg bg-[#1f2937] hover:bg-[#374151] text-slate-300 hover:text-white transition-colors"
+          className={`p-2 rounded-lg transition-colors border ${
+            isDark
+              ? "bg-[#1f2937] hover:bg-[#374151] text-slate-300 hover:text-white border-transparent"
+              : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+          }`}
           title="Open Downloads Folder"
         >
-          <FolderOpen className="w-4 h-4 text-blue-400" />
+          <FolderOpen className="w-4 h-4 text-blue-500" />
         </button>
 
         {/* Settings */}
         <button
           onClick={onOpenSettings}
-          className="p-2 rounded-lg bg-[#1f2937] hover:bg-[#374151] text-slate-300 hover:text-white transition-colors"
+          className={`p-2 rounded-lg transition-colors border ${
+            isDark
+              ? "bg-[#1f2937] hover:bg-[#374151] text-slate-300 hover:text-white border-transparent"
+              : "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200"
+          }`}
           title="Preferences & Settings"
         >
-          <Settings className="w-4 h-4 text-slate-300" />
+          <Settings className="w-4 h-4" />
         </button>
       </div>
     </div>
