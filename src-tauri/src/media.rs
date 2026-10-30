@@ -227,6 +227,8 @@ fn get_augmented_path() -> String {
     if let Ok(local_app_data) = env::var("LOCALAPPDATA") {
         let local = PathBuf::from(&local_app_data);
         // App's own local managed bin directory
+        extra_dirs.push(local.clone());
+        extra_dirs.push(local.join("Goat Download Manager").join("bin"));
         extra_dirs.push(local.join("GM-Downloader").join("bin"));
         extra_dirs.push(local.join("Programs").join("yt-dlp"));
 
@@ -334,6 +336,20 @@ fn find_exe_in_augmented_path(bin_name: &str) -> Option<PathBuf> {
 }
 
 fn ensure_ytdlp_available() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local) = env::var("LOCALAPPDATA") {
+            let p_gdm = PathBuf::from(&local).join("Goat Download Manager").join("bin").join("yt-dlp.exe");
+            if p_gdm.exists() { return Some(p_gdm); }
+            let p_gdm_root = PathBuf::from(&local).join("Goat Download Manager").join("yt-dlp.exe");
+            if p_gdm_root.exists() { return Some(p_gdm_root); }
+            let p_gm = PathBuf::from(&local).join("GM-Downloader").join("bin").join("yt-dlp.exe");
+            if p_gm.exists() { return Some(p_gm); }
+            let p_direct = PathBuf::from(&local).join("yt-dlp.exe");
+            if p_direct.exists() { return Some(p_direct); }
+        }
+    }
+
     if let Some(existing) = find_exe_in_augmented_path("yt-dlp") {
         return Some(existing);
     }
@@ -532,6 +548,12 @@ pub async fn fetch_media_info(
                 "--no-playlist",
                 "--no-check-certificates",
             ]);
+
+            if find_exe_in_augmented_path("node").is_some() {
+                cmd.args(["--js-runtimes", "node"]);
+            } else if find_exe_in_augmented_path("deno").is_some() {
+                cmd.args(["--js-runtimes", "deno"]);
+            }
 
             if let Some(arg) = extractor_arg {
                 cmd.args(["--extractor-args", arg]);
@@ -824,8 +846,10 @@ pub async fn start_download(
         let mut cmd = make_command("yt-dlp");
         cmd.args(["--newline", "--progress", "--no-playlist"]);
 
-        // Ensure Deno JS runtime
-        if find_exe_in_augmented_path("deno").is_some() {
+        // Ensure Node or Deno JS runtime
+        if find_exe_in_augmented_path("node").is_some() {
+            cmd.args(["--js-runtimes", "node"]);
+        } else if find_exe_in_augmented_path("deno").is_some() {
             cmd.args(["--js-runtimes", "deno"]);
         }
 

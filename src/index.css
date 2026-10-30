@@ -52,35 +52,56 @@ body {
   background: #4a5568;
 }
 
-/* Crisp Clean Panels */
-.clean-panel {
-  background-color: #111827;
-  border: 1px solid #1f2937;
+/* Universal Dark Inputs - Guarantees NO white-on-white text */
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="url"],
+select,
+textarea,
+.clean-input,
+.glass-input {
+  background-color: #0d1424 !important;
+  color: #ffffff !important;
+  border: 1px solid #253350 !important;
 }
 
-.clean-card {
-  background-color: #151d30;
-  border: 1px solid #232f48;
+input::placeholder,
+textarea::placeholder,
+.clean-input::placeholder,
+.glass-input::placeholder {
+  color: #64748b !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.clean-input:focus,
+.glass-input:focus {
+  background-color: #10192e !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3) !important;
+  outline: none !important;
+}
+
+/* Clean Panels & Cards */
+.clean-panel,
+.glass-panel {
+  background-color: #111827 !important;
+  border: 1px solid #1f2937 !important;
+}
+
+.clean-card,
+.glass-card {
+  background-color: #151d30 !important;
+  border: 1px solid #232f48 !important;
   transition: all 0.15s ease-in-out;
 }
 
-.clean-card:hover {
-  background-color: #1a243d;
-  border-color: #3b82f6;
-}
-
-.clean-input {
-  background-color: #0d1424;
-  border: 1px solid #253350;
-  color: #ffffff;
-  transition: all 0.15s ease;
-}
-
-.clean-input:focus {
-  background-color: #10192e;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
-  outline: none;
+.clean-card:hover,
+.glass-card:hover {
+  background-color: #1a243d !important;
+  border-color: #3b82f6 !important;
 }
 
 /* Table Row Hover */

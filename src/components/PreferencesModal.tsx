@@ -97,31 +97,31 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="glass-panel w-full max-w-xl rounded-2xl border border-purple-500/25 shadow-2xl overflow-hidden text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="w-full max-w-xl rounded-xl bg-[#111827] border border-[#1f2937] shadow-2xl overflow-hidden text-slate-100">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-purple-500/15 bg-slate-950/60">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1f2937] bg-[#162032]">
           <div className="flex items-center space-x-2.5">
-            <Settings className="w-5 h-5 text-purple-400" />
-            <h2 className="font-bold text-sm bg-gradient-to-r from-purple-200 via-pink-200 to-amber-100 bg-clip-text text-transparent">
+            <Settings className="w-5 h-5 text-blue-400" />
+            <h2 className="font-bold text-sm text-white">
               GDM Options & Configuration
             </h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#1f2937] transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-purple-500/15 bg-slate-950/40 px-6 pt-2 space-x-6">
+        <div className="flex border-b border-[#1f2937] bg-[#0d1424] px-5 pt-2 space-x-6">
           <button
             onClick={() => setActiveTab("general")}
-            className={`pb-2.5 text-xs font-semibold flex items-center space-x-1.5 border-b-2 transition-all ${
+            className={`pb-2 text-xs font-bold flex items-center space-x-1.5 border-b-2 transition-all ${
               activeTab === "general"
-                ? "border-purple-400 text-purple-300"
+                ? "border-blue-500 text-blue-400"
                 : "border-transparent text-slate-400 hover:text-slate-200"
             }`}
           >
@@ -131,9 +131,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
 
           <button
             onClick={() => setActiveTab("connection")}
-            className={`pb-2.5 text-xs font-semibold flex items-center space-x-1.5 border-b-2 transition-all ${
+            className={`pb-2 text-xs font-bold flex items-center space-x-1.5 border-b-2 transition-all ${
               activeTab === "connection"
-                ? "border-purple-400 text-purple-300"
+                ? "border-blue-500 text-blue-400"
                 : "border-transparent text-slate-400 hover:text-slate-200"
             }`}
           >
@@ -143,9 +143,9 @@ export const PreferencesModal: React.FC<PreferencesModalProps> = ({
 
           <button
             onClick={() => setActiveTab("tools")}
-            className={`pb-2.5 text-xs font-semibold flex items-center space-x-1.5 border-b-2 transition-all ${
+            className={`pb-2 text-xs font-bold flex items-center space-x-1.5 border-b-2 transition-all ${
               activeTab === "tools"
-                ? "border-purple-400 text-purple-300"
+                ? "border-blue-500 text-blue-400"
                 : "border-transparent text-slate-400 hover:text-slate-200"
             }`}
           >

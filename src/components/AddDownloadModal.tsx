@@ -4,15 +4,11 @@ import {
   Zap,
   Film,
   Folder,
-  ArrowRight,
   Download,
-  Sliders,
-  CheckCircle2,
   AlertCircle,
-  FileCheck,
   Scissors,
-  Subtitles,
   Loader2,
+  Clipboard,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -28,9 +24,7 @@ interface AddDownloadModalProps {
     filename: string,
     connections: number
   ) => Promise<void>;
-  onAddMediaDownload: (
-    options: any
-  ) => Promise<void>;
+  onAddMediaDownload: (options: any) => Promise<void>;
 }
 
 export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
@@ -46,7 +40,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   const [url, setUrl] = useState(defaultUrl);
   const [customFilename, setCustomFilename] = useState("");
   const [saveFolder, setSaveFolder] = useState("");
-  const [connections, setConnections] = useState(8);
+  const [connections, setConnections] = useState(16);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -65,38 +59,42 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       const cleanUrl = typeof defaultUrl === "string" ? defaultUrl : (defaultUrl as any)?.url || "";
       if (cleanUrl) {
         setUrl(cleanUrl);
-        const lower = cleanUrl.toLowerCase();
-        const isDirectFile =
-          lower.endsWith(".mkv") ||
-          lower.endsWith(".mp4") ||
-          lower.endsWith(".avi") ||
-          lower.endsWith(".zip") ||
-          lower.endsWith(".rar") ||
-          lower.endsWith(".7z") ||
-          lower.endsWith(".tar") ||
-          lower.endsWith(".gz") ||
-          lower.endsWith(".iso") ||
-          lower.endsWith(".exe") ||
-          lower.endsWith(".msi") ||
-          lower.endsWith(".pdf");
-
-        if (
-          !isDirectFile &&
-          (lower.includes("youtube.com") ||
-            lower.includes("youtu.be") ||
-            lower.includes("instagram.com") ||
-            lower.includes("facebook.com") ||
-            lower.includes("tiktok.com") ||
-            lower.includes("twitter.com") ||
-            lower.includes("x.com"))
-        ) {
-          setTab("media");
-        } else {
-          setTab("direct");
-        }
+        handleUrlDetection(cleanUrl);
       }
     }
   }, [defaultUrl]);
+
+  const handleUrlDetection = (inputUrl: string) => {
+    const lower = inputUrl.toLowerCase().trim();
+    const isDirectFile =
+      lower.endsWith(".mkv") ||
+      lower.endsWith(".mp4") ||
+      lower.endsWith(".avi") ||
+      lower.endsWith(".zip") ||
+      lower.endsWith(".rar") ||
+      lower.endsWith(".7z") ||
+      lower.endsWith(".tar") ||
+      lower.endsWith(".gz") ||
+      lower.endsWith(".iso") ||
+      lower.endsWith(".exe") ||
+      lower.endsWith(".msi") ||
+      lower.endsWith(".pdf");
+
+    if (
+      !isDirectFile &&
+      (lower.includes("youtube.com") ||
+        lower.includes("youtu.be") ||
+        lower.includes("instagram.com") ||
+        lower.includes("facebook.com") ||
+        lower.includes("tiktok.com") ||
+        lower.includes("twitter.com") ||
+        lower.includes("x.com"))
+    ) {
+      setTab("media");
+    } else {
+      setTab("direct");
+    }
+  };
 
   // Load default downloads directory
   useEffect(() => {
@@ -105,13 +103,27 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
         const homeDir = await invoke<string>("get_default_download_dir");
         if (homeDir) setSaveFolder(homeDir);
       } catch {
-        setSaveFolder("D:\\Downloads");
+        setSaveFolder("C:\\Users\\GM desktop\\Downloads");
       }
     };
     fetchDefaultDir();
   }, []);
 
   if (!isOpen) return null;
+
+  const handlePasteClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && text.trim()) {
+        const clean = text.trim();
+        setUrl(clean);
+        handleUrlDetection(clean);
+        setErrorMessage(null);
+      }
+    } catch (e) {
+      console.warn("Clipboard access error:", e);
+    }
+  };
 
   const handleSelectFolder = async () => {
     try {
@@ -128,8 +140,8 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
     }
   };
 
-  const handleDirectSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleDirectSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     const cleanUrl = url.trim();
     if (!cleanUrl) {
       setErrorMessage("Please enter a valid URL");
@@ -149,21 +161,22 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   };
 
   const handleFetchMediaInfo = async () => {
-    if (!url.trim()) return;
+    const cleanUrl = url.trim();
+    if (!cleanUrl) return;
     try {
       setIsFetchingMedia(true);
       setErrorMessage(null);
       let parsed: any;
       try {
         parsed = await invoke("fetch_media_info", {
-          url: url.trim(),
+          url: cleanUrl,
           cookiesBrowser: null,
           cookiesFile: null,
           proxy: null,
           discoveryArgs: null,
         });
       } catch (err) {
-        parsed = await invoke("ytdlp_get_info", { url: url.trim() });
+        parsed = await invoke("ytdlp_get_info", { url: cleanUrl });
       }
 
       if (typeof parsed === "string") {
@@ -200,23 +213,24 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       if (videoStreams.length > 0) setSelectedFormatId(videoStreams[0].id);
       if (audioStreams.length > 0) setSelectedAudioId(audioStreams[0].id);
     } catch (err: any) {
-      setErrorMessage("Failed to inspect media stream: " + (err?.message || err?.toString() || "Unknown error"));
+      setErrorMessage("Could not inspect stream. You can still click 'Download Media' directly: " + (err?.message || err?.toString() || "Stream check failed"));
     } finally {
       setIsFetchingMedia(false);
     }
   };
 
   const handleMediaSubmit = async () => {
-    if (!url.trim()) return;
+    const cleanUrl = url.trim();
+    if (!cleanUrl) return;
     try {
       setSubmitting(true);
       setErrorMessage(null);
       await onAddMediaDownload({
-        url: url.trim(),
+        url: cleanUrl,
         saveFolder,
         customFilename: customFilename.trim(),
-        videoStreamId: selectedFormatId,
-        audioStreamId: selectedAudioId,
+        videoStreamId: selectedFormatId || "best",
+        audioStreamId: selectedAudioId || "best",
         container,
         enableClip,
         startTime,
@@ -231,80 +245,93 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="glass-panel w-full max-w-xl rounded-2xl border border-purple-500/25 shadow-2xl overflow-hidden text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="w-full max-w-xl rounded-xl bg-[#111827] border border-[#1f2937] shadow-2xl overflow-hidden text-slate-100">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-purple-500/15 bg-slate-950/50">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-lg shadow-[0_0_12px_rgba(168,85,247,0.3)]">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1f2937] bg-[#162032]">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-full bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-lg">
               🐐
             </div>
             <div>
-              <h2 className="font-bold text-sm bg-gradient-to-r from-purple-300 via-pink-300 to-amber-200 bg-clip-text text-transparent">
+              <h2 className="font-bold text-sm text-white">
                 Add New Download
               </h2>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-300">
                 Segmented HTTP Engine & Media Extractor
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#1f2937] transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Selection */}
-        <div className="flex border-b border-purple-500/15 bg-slate-950/30 px-6 pt-3 space-x-6">
+        <div className="flex border-b border-[#1f2937] bg-[#0d1424] px-5 pt-2.5 space-x-6">
           <button
             onClick={() => setTab("direct")}
-            className={`pb-2.5 text-xs font-semibold flex items-center space-x-2 border-b-2 transition-all ${
+            className={`pb-2 text-xs font-bold flex items-center space-x-2 border-b-2 transition-all ${
               tab === "direct"
-                ? "border-purple-400 text-purple-300 shadow-[0_2px_12px_rgba(168,85,247,0.3)]"
+                ? "border-blue-500 text-blue-400"
                 : "border-transparent text-slate-400 hover:text-slate-200"
             }`}
           >
-            <Zap className="w-4 h-4 text-cyan-400" />
+            <Zap className="w-4 h-4 text-blue-400" />
             <span>Direct File (IDM Segmented)</span>
           </button>
           <button
             onClick={() => setTab("media")}
-            className={`pb-2.5 text-xs font-semibold flex items-center space-x-2 border-b-2 transition-all ${
+            className={`pb-2 text-xs font-bold flex items-center space-x-2 border-b-2 transition-all ${
               tab === "media"
-                ? "border-pink-400 text-pink-300 shadow-[0_2px_12px_rgba(244,114,182,0.3)]"
+                ? "border-purple-500 text-purple-400"
                 : "border-transparent text-slate-400 hover:text-slate-200"
             }`}
           >
-            <Film className="w-4 h-4 text-pink-400" />
+            <Film className="w-4 h-4 text-purple-400" />
             <span>Video & Social Media (yt-dlp)</span>
           </button>
         </div>
 
         {/* Form Body */}
-        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+        <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
           {errorMessage && (
-            <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/40 text-rose-200 text-xs flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* URL Input */}
+          {/* URL Input with Paste Button */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-300">Target Download URL</label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-white">Target Download URL</label>
+              <button
+                type="button"
+                onClick={handlePasteClipboard}
+                className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 flex items-center space-x-1"
+              >
+                <Clipboard className="w-3.5 h-3.5" />
+                <span>Paste from Clipboard</span>
+              </button>
+            </div>
             <div className="flex space-x-2">
               <input
                 type="text"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  handleUrlDetection(e.target.value);
+                }}
                 placeholder={
                   tab === "direct"
-                    ? "https://example.com/file.zip or .exe, .iso, .pdf..."
-                    : "https://www.youtube.com/watch?v=... or Instagram / TikTok link"
+                    ? "Paste direct link (.zip, .exe, .mkv, .iso, .pdf)..."
+                    : "Paste YouTube, Facebook, Instagram, or TikTok link..."
                 }
-                className="flex-1 px-3.5 py-2.5 rounded-xl text-xs glass-input font-mono text-slate-100"
+                className="flex-1 px-3 py-2 rounded-lg text-xs font-mono text-white bg-[#0d1424] border border-[#253350] focus:border-blue-500 focus:outline-none"
                 autoFocus
               />
               {tab === "media" && (
@@ -312,7 +339,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                   type="button"
                   onClick={handleFetchMediaInfo}
                   disabled={isFetchingMedia || !url.trim()}
-                  className="px-4 py-2.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 text-xs font-semibold flex items-center space-x-1.5 transition-all disabled:opacity-50"
+                  className="px-3.5 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center space-x-1.5 transition-colors disabled:opacity-50"
                 >
                   {isFetchingMedia ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -326,18 +353,18 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
 
           {/* Save Destination Folder */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-300">Save Destination</label>
+            <label className="text-xs font-bold text-white">Save Destination</label>
             <div className="flex space-x-2">
               <input
                 type="text"
                 value={saveFolder}
                 onChange={(e) => setSaveFolder(e.target.value)}
-                className="flex-1 px-3.5 py-2.5 rounded-xl text-xs glass-input font-mono text-slate-300"
+                className="flex-1 px-3 py-2 rounded-lg text-xs font-mono text-white bg-[#0d1424] border border-[#253350] focus:border-blue-500 focus:outline-none"
               />
               <button
                 type="button"
                 onClick={handleSelectFolder}
-                className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-purple-500/20 text-slate-300 hover:text-white hover:bg-purple-600/20 transition-colors"
+                className="px-3.5 py-2 rounded-lg bg-[#1f2937] hover:bg-[#374151] border border-[#253350] text-slate-200 hover:text-white transition-colors"
                 title="Browse folder"
               >
                 <Folder className="w-4 h-4" />
@@ -347,27 +374,27 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
 
           {/* Custom Filename */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-300">
-              Custom Filename <span className="text-slate-500">(Optional)</span>
+            <label className="text-xs font-bold text-white">
+              Custom Filename <span className="text-slate-400 font-normal">(Optional)</span>
             </label>
             <input
               type="text"
               value={customFilename}
               onChange={(e) => setCustomFilename(e.target.value)}
               placeholder="Leave empty to use server original name"
-              className="w-full px-3.5 py-2.5 rounded-xl text-xs glass-input text-slate-100"
+              className="w-full px-3 py-2 rounded-lg text-xs text-white bg-[#0d1424] border border-[#253350] focus:border-blue-500 focus:outline-none"
             />
           </div>
 
           {/* Direct Mode Specifics: Simultaneous Segments */}
           {tab === "direct" && (
-            <div className="space-y-2 pt-2 border-t border-purple-500/10">
+            <div className="space-y-2 pt-2 border-t border-[#1f2937]">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-slate-300">
+                <span className="font-bold text-white">
                   Simultaneous Download Segments (Threads)
                 </span>
-                <span className="font-mono font-bold text-cyan-400">
-                  {connections} Chunks
+                <span className="font-mono font-bold text-blue-400">
+                  {connections} Chunks (IDM Turbo)
                 </span>
               </div>
               <div className="grid grid-cols-4 gap-2">
@@ -376,69 +403,71 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                     key={num}
                     type="button"
                     onClick={() => setConnections(num)}
-                    className={`py-2 rounded-xl text-xs font-semibold border transition-all ${
+                    className={`py-2 rounded-lg text-xs font-bold border transition-colors ${
                       connections === num
-                        ? "bg-purple-600/30 border-purple-400 text-purple-200 shadow-[0_0_12px_rgba(168,85,247,0.2)]"
-                        : "bg-slate-900/60 border-purple-500/10 text-slate-400 hover:text-white"
+                        ? "bg-blue-600 border-blue-500 text-white"
+                        : "bg-[#0d1424] border-[#1f2937] text-slate-300 hover:bg-[#162032] hover:text-white"
                     }`}
                   >
                     {num} Threads
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-slate-400">
-                Splits file via HTTP Range slicing for up to 500% faster acceleration.
+              <p className="text-[11px] text-slate-300">
+                Splits file into concurrent HTTP Range slices for maximum bandwidth saturation.
               </p>
             </div>
           )}
 
           {/* Media Mode Specifics */}
           {tab === "media" && mediaInfo && (
-            <div className="space-y-3 pt-2 border-t border-purple-500/10">
-              <div className="flex items-center space-x-3 p-2.5 rounded-xl bg-slate-950/60 border border-purple-500/20">
+            <div className="space-y-3 pt-2 border-t border-[#1f2937]">
+              <div className="flex items-center space-x-3 p-2.5 rounded-lg bg-[#0d1424] border border-[#1f2937]">
                 {mediaInfo.thumbnail && (
                   <img
                     src={mediaInfo.thumbnail}
                     alt="Thumbnail"
-                    className="w-16 h-10 object-cover rounded-lg flex-shrink-0"
+                    className="w-16 h-10 object-cover rounded flex-shrink-0"
                   />
                 )}
                 <div className="min-w-0 flex-1">
-                  <h4 className="text-xs font-semibold text-slate-200 truncate">
+                  <h4 className="text-xs font-bold text-white truncate">
                     {mediaInfo.title}
                   </h4>
-                  <p className="text-[10px] text-slate-400 truncate">
+                  <p className="text-[11px] text-slate-300 truncate">
                     {mediaInfo.uploader}
                   </p>
                 </div>
               </div>
 
               {/* Stream Picker */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-300">Video Quality</label>
-                <select
-                  value={selectedFormatId}
-                  onChange={(e) => setSelectedFormatId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl text-xs glass-input text-slate-200"
-                >
-                  {mediaInfo.videoStreams.map((s) => (
-                    <option key={s.id} value={s.id} className="bg-slate-900">
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {mediaInfo.videoStreams.length > 0 && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-white">Video Quality</label>
+                  <select
+                    value={selectedFormatId}
+                    onChange={(e) => setSelectedFormatId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg text-xs text-white bg-[#0d1424] border border-[#253350]"
+                  >
+                    {mediaInfo.videoStreams.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Container Format */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-300">Format</label>
+                <label className="text-xs font-bold text-white">Format Container</label>
                 <select
                   value={container}
                   onChange={(e) => setContainer(e.target.value as ContainerFormat)}
-                  className="w-full px-3 py-2 rounded-xl text-xs glass-input text-slate-200"
+                  className="w-full px-3 py-2 rounded-lg text-xs text-white bg-[#0d1424] border border-[#253350]"
                 >
                   {ALL_CONTAINERS.map((c) => (
-                    <option key={c} value={c} className="bg-slate-900">
+                    <option key={c} value={c}>
                       {c}
                     </option>
                   ))}
@@ -446,11 +475,11 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
               </div>
 
               {/* Clipper Toggle */}
-              <div className="pt-2">
+              <div className="pt-1">
                 <button
                   type="button"
                   onClick={() => setEnableClip(!enableClip)}
-                  className="flex items-center space-x-2 text-xs font-medium text-purple-300 hover:text-purple-200"
+                  className="flex items-center space-x-2 text-xs font-semibold text-blue-400 hover:text-blue-300"
                 >
                   <Scissors className="w-3.5 h-3.5" />
                   <span>{enableClip ? "Disable Timeframe Clipper" : "Enable Timeframe Clipper"}</span>
@@ -458,21 +487,21 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                 {enableClip && (
                   <div className="grid grid-cols-2 gap-3 mt-2">
                     <div>
-                      <span className="text-[10px] text-slate-400">Start (HH:MM:SS)</span>
+                      <span className="text-[10px] text-slate-300 font-bold">Start (HH:MM:SS)</span>
                       <input
                         type="text"
                         value={startTime}
                         onChange={(e) => setStartTime(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg text-xs glass-input font-mono"
+                        className="w-full px-2.5 py-1.5 rounded text-xs font-mono text-white bg-[#0d1424] border border-[#253350]"
                       />
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400">End (HH:MM:SS)</span>
+                      <span className="text-[10px] text-slate-300 font-bold">End (HH:MM:SS)</span>
                       <input
                         type="text"
                         value={endTime}
                         onChange={(e) => setEndTime(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg text-xs glass-input font-mono"
+                        className="w-full px-2.5 py-1.5 rounded text-xs font-mono text-white bg-[#0d1424] border border-[#253350]"
                       />
                     </div>
                   </div>
@@ -483,11 +512,11 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end space-x-3 px-6 py-4 border-t border-purple-500/15 bg-slate-950/50">
+        <div className="flex items-center justify-end space-x-3 px-5 py-3 border-t border-[#1f2937] bg-[#162032]">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs text-slate-400 hover:text-white transition-colors"
+            className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:text-white transition-colors"
           >
             Cancel
           </button>
@@ -495,9 +524,9 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
           {tab === "direct" ? (
             <button
               type="button"
-              onClick={handleDirectSubmit}
+              onClick={() => handleDirectSubmit()}
               disabled={submitting || !url.trim()}
-              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-xs shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all disabled:opacity-50"
+              className="flex items-center space-x-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow transition-colors disabled:opacity-50"
             >
               {submitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -511,7 +540,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
               type="button"
               onClick={handleMediaSubmit}
               disabled={submitting || !url.trim()}
-              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-semibold text-xs shadow-[0_0_20px_rgba(244,114,182,0.3)] transition-all disabled:opacity-50"
+              className="flex items-center space-x-2 px-5 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow transition-colors disabled:opacity-50"
             >
               {submitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
