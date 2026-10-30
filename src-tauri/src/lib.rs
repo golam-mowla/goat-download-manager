@@ -198,10 +198,23 @@ fn decode_percent_encoded(input: &str) -> String {
 }
 
 async fn start_local_bridge(app_handle: AppHandle) {
-    let listener = match tokio::net::TcpListener::bind("127.0.0.1:9666").await {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("GDM: Local bridge already bound or port 9666 in use: {}", e);
+    let mut listener = None;
+    for _ in 0..15 {
+        match tokio::net::TcpListener::bind("127.0.0.1:9666").await {
+            Ok(l) => {
+                listener = Some(l);
+                break;
+            }
+            Err(_) => {
+                tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+            }
+        }
+    }
+
+    let listener = match listener {
+        Some(l) => l,
+        None => {
+            eprintln!("GDM: Could not bind local bridge port 9666 after retries");
             return;
         }
     };
