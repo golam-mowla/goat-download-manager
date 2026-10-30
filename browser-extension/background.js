@@ -77,7 +77,8 @@ async function handleDownloadInterception(downloadItem, suggest) {
       });
 
       // Forward to GDM Desktop Engine
-      await sendUrlToGdm(rawUrl, null, downloadItem.filename);
+      const cleanFilename = downloadItem.filename ? downloadItem.filename.replace(/^.*[\\\/]/, "") : "";
+      await sendUrlToGdm(rawUrl, null, cleanFilename);
       return true;
     }
   } catch (err) {
@@ -187,7 +188,8 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1200);
 
-    const bridgeEndpoint = `${GDM_BRIDGE_URL}/open?url=${encodeURIComponent(cleanUrl)}`;
+    const filenameParam = customFilename ? `&filename=${encodeURIComponent(customFilename)}` : "";
+    const bridgeEndpoint = `${GDM_BRIDGE_URL}/open?url=${encodeURIComponent(cleanUrl)}${filenameParam}`;
     const resp = await fetch(bridgeEndpoint, {
       method: "GET",
       signal: controller.signal,

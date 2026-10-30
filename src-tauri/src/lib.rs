@@ -64,7 +64,7 @@ async fn start_http_download(
     let save_path = PathBuf::from(&resolved_folder).join(&resolved_name).to_string_lossy().to_string();
     let total_bytes = meta.total_size.unwrap_or(0);
     let chunks = chunk_count.unwrap_or(if meta.supports_ranges && total_bytes > 2 * 1024 * 1024 { 8 } else { 1 });
-    let category = downloader::detect_category(&resolved_name);
+    let category = downloader::detect_category_with_mime(&resolved_name, meta.content_type.as_deref());
 
     let task_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -170,7 +170,7 @@ fn dirs_or_default_downloads() -> String {
 // Protocol & Local Bridge Server (for Browser Extension Interception)
 // ---------------------------------------------------------------------------
 
-fn decode_percent_encoded(input: &str) -> String {
+pub fn decode_percent_encoded(input: &str) -> String {
     let mut bytes = Vec::new();
     let mut chars = input.bytes();
     while let Some(b) = chars.next() {
@@ -244,18 +244,30 @@ async fn start_local_bridge(app_handle: AppHandle) {
                     }
 
                     let mut target_url = None;
-                    if let Some(idx) = req_str.find("/open?url=") {
-                        let sub = &req_str[idx + 10..];
-                        let end_idx = sub.find(|c: char| c == ' ' || c == '\r' || c == '\n').unwrap_or(sub.len());
-                        let raw = &sub[..end_idx];
-                        target_url = Some(decode_percent_encoded(raw));
+                    let mut target_filename = None;
+                    if let Some(idx) = req_str.find("/open?") {
+                        let query_str = &req_str[idx + 6..];
+                        let end_idx = query_str.find(|c: char| c == ' ' || c == '\r' || c == '\n').unwrap_or(query_str.len());
+                        let clean_query = &query_str[..end_idx];
+
+                        for part in clean_query.split('&') {
+                            if part.starts_with("url=") {
+                                target_url = Some(decode_percent_encoded(&part[4..]));
+                            } else if part.starts_with("filename=") {
+                                target_filename = Some(decode_percent_encoded(&part[9..]));
+                            }
+                        }
                     }
 
                     if let Some(url) = target_url {
                         let clean = url.trim().to_string();
                         if !clean.is_empty() {
-                            let _ = handle.emit("open-url", clean.clone());
-                            let _ = handle.emit("gdm://open-url", clean.clone());
+                            let payload = serde_json::json!({
+                                "url": clean,
+                                "filename": target_filename
+                            });
+                            let _ = handle.emit("open-url", payload.clone());
+                            let _ = handle.emit("gdm://open-url", payload);
                             if let Some(win) = handle.get_webview_window("main") {
                                 let _ = win.unminimize();
                                 let _ = win.show();

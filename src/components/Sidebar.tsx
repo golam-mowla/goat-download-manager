@@ -12,7 +12,6 @@ import {
   Clock,
   PauseCircle,
   AlertCircle,
-  Download,
 } from "lucide-react";
 
 export type CategoryType = "all" | "video" | "audio" | "docs" | "compressed" | "programs";
@@ -44,30 +43,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
   theme = "dark",
 }) => {
   const isDark = theme === "dark";
+
   const categories: { id: CategoryType; label: string; icon: React.ReactNode }[] = [
-    { id: "all", label: "All Downloads", icon: <Layers className="w-4 h-4 text-blue-400" /> },
-    { id: "compressed", label: "Compressed", icon: <Archive className="w-4 h-4 text-amber-400" /> },
-    { id: "docs", label: "Documents", icon: <FileText className="w-4 h-4 text-emerald-400" /> },
-    { id: "audio", label: "Music & Audio", icon: <Music className="w-4 h-4 text-pink-400" /> },
-    { id: "programs", label: "Programs", icon: <Binary className="w-4 h-4 text-teal-400" /> },
-    { id: "video", label: "Videos", icon: <Video className="w-4 h-4 text-purple-400" /> },
+    { id: "all", label: "All Downloads", icon: <Layers className="w-[18px] h-[18px] text-blue-500 flex-shrink-0" /> },
+    { id: "compressed", label: "Compressed", icon: <Archive className="w-[18px] h-[18px] text-amber-500 flex-shrink-0" /> },
+    { id: "docs", label: "Documents", icon: <FileText className="w-[18px] h-[18px] text-emerald-500 flex-shrink-0" /> },
+    { id: "audio", label: "Music & Audio", icon: <Music className="w-[18px] h-[18px] text-pink-500 flex-shrink-0" /> },
+    { id: "programs", label: "Programs", icon: <Binary className="w-[18px] h-[18px] text-teal-500 flex-shrink-0" /> },
+    { id: "video", label: "Videos", icon: <Video className="w-[18px] h-[18px] text-purple-500 flex-shrink-0" /> },
   ];
 
-  const statuses: { id: StatusFilterType; label: string; icon: React.ReactNode; color: string }[] = [
-    { id: "downloading", label: "Downloading", icon: <Clock className="w-4 h-4 text-blue-400" />, color: "text-blue-400" },
-    { id: "completed", label: "Finished", icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" />, color: "text-emerald-400" },
-    { id: "paused", label: "Paused", icon: <PauseCircle className="w-4 h-4 text-amber-400" />, color: "text-amber-400" },
-    { id: "error", label: "Incomplete / Error", icon: <AlertCircle className="w-4 h-4 text-rose-400" />, color: "text-rose-400" },
+  const statuses: { id: StatusFilterType; label: string; icon: React.ReactNode }[] = [
+    { id: "downloading", label: "Downloading", icon: <Clock className="w-[18px] h-[18px] text-blue-500 flex-shrink-0" /> },
+    { id: "completed", label: "Finished", icon: <CheckCircle2 className="w-[18px] h-[18px] text-emerald-500 flex-shrink-0" /> },
+    { id: "paused", label: "Paused", icon: <PauseCircle className="w-[18px] h-[18px] text-amber-500 flex-shrink-0" /> },
+    { id: "error", label: "Incomplete / Error", icon: <AlertCircle className="w-[18px] h-[18px] text-red-500 flex-shrink-0" /> },
   ];
 
   return (
-    <aside
-      className={`w-64 h-screen flex flex-col justify-between border-r p-3.5 z-20 select-none overflow-y-auto transition-colors ${
-        isDark ? "bg-[#111827] border-[#1f2937] text-slate-100" : "bg-white border-slate-200 text-slate-800"
-      }`}
-    >
+    <aside className="w-64 h-screen flex flex-col justify-between border-r border-gdm bg-gdm-surface text-gdm-primary p-4 z-20 select-none overflow-y-auto transition-colors">
       {/* Top Section */}
-      <div className="space-y-4">
+      <div className="space-y-5">
         {/* Goat Branding */}
         <div className="flex items-center space-x-3 px-1 pt-1">
           <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-transparent">
@@ -80,36 +76,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <div className="flex flex-col">
             <div className="flex items-center space-x-1.5">
-              <span className={`font-black text-sm tracking-tight ${isDark ? "text-white" : "text-slate-900"}`}>
+              <span className="font-bold text-[15px] tracking-tight text-gdm-primary">
                 GDM
               </span>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-blue-600/30 text-blue-500 border border-blue-500/40">
+              <span className="text-[12px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded bg-blue-600/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
                 PRO
               </span>
             </div>
-            <span className={`text-[11px] font-medium ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+            <span className="text-[12px] font-medium text-gdm-secondary">
               Goat Download Manager
             </span>
           </div>
         </div>
 
-        {/* Media Extractor Quick Button */}
+        {/* Media Grabber Button */}
         <button
           onClick={onOpenMediaModal}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 transition-colors text-xs font-bold text-white shadow"
+          className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-lg bg-[#2563EB] hover:bg-blue-600 transition-colors text-[13px] font-semibold text-white shadow-xs"
         >
           <div className="flex items-center space-x-2">
             <Sparkles className="w-4 h-4 text-yellow-300" />
             <span>Media Grabber</span>
           </div>
-          <span className="text-[10px] bg-black/30 text-white px-2 py-0.5 rounded font-mono font-semibold">
+          <span className="text-[12px] bg-black/25 text-white px-2 py-0.5 rounded font-mono font-medium">
             yt-dlp
           </span>
         </button>
 
-        {/* Categories Tree */}
+        {/* Categories Section */}
         <div className="space-y-1">
-          <p className={`text-[11px] font-bold uppercase tracking-wider px-2 mb-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+          <p className="text-[12px] font-semibold text-gdm-secondary uppercase tracking-wider px-2.5 mb-1.5">
             Categories
           </p>
           {categories.map((cat) => {
@@ -122,12 +118,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onSelectCategory(cat.id);
                   onSelectStatus("all");
                 }}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${
                   isSelected
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : isDark
-                    ? "text-slate-200 hover:bg-[#1f2937] hover:text-white"
-                    : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                    ? "bg-[#2563EB] text-white shadow-xs"
+                    : "text-gdm-secondary hover:bg-gdm-tableHead hover:text-gdm-primary"
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
@@ -135,12 +129,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span>{cat.label}</span>
                 </div>
                 <span
-                  className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                  className={`text-[12px] font-semibold tabular-nums px-2 py-0.5 rounded-full ${
                     isSelected
-                      ? "bg-black/30 text-white"
+                      ? "bg-black/25 text-white"
                       : isDark
-                      ? "bg-[#1f2937] text-slate-300"
-                      : "bg-slate-100 text-slate-600"
+                      ? "bg-[#1E293B] text-slate-200"
+                      : "bg-slate-200 text-slate-800"
                   }`}
                 >
                   {count}
@@ -150,9 +144,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </div>
 
-        {/* Status Queue Filters */}
-        <div className={`space-y-1 pt-2 border-t ${isDark ? "border-[#1f2937]" : "border-slate-200"}`}>
-          <p className={`text-[11px] font-bold uppercase tracking-wider px-2 mb-1 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+        {/* Status Queue Section */}
+        <div className="space-y-1 pt-3 border-t border-gdm">
+          <p className="text-[12px] font-semibold text-gdm-secondary uppercase tracking-wider px-2.5 mb-1.5">
             Status Queue
           </p>
           {statuses.map((st) => {
@@ -162,12 +156,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 key={st.id}
                 onClick={() => onSelectStatus(st.id)}
-                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${
                   isSelected
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : isDark
-                    ? "text-slate-200 hover:bg-[#1f2937] hover:text-white"
-                    : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                    ? "bg-[#2563EB] text-white shadow-xs"
+                    : "text-gdm-secondary hover:bg-gdm-tableHead hover:text-gdm-primary"
                 }`}
               >
                 <div className="flex items-center space-x-2.5">
@@ -176,12 +168,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 {count > 0 && (
                   <span
-                    className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                    className={`text-[12px] font-semibold tabular-nums px-2 py-0.5 rounded-full ${
                       isSelected
-                        ? "bg-black/30 text-white"
+                        ? "bg-black/25 text-white"
                         : isDark
-                        ? "bg-[#1f2937] text-slate-300"
-                        : "bg-slate-100 text-slate-600"
+                        ? "bg-[#1E293B] text-slate-200"
+                        : "bg-slate-200 text-slate-800"
                     }`}
                   >
                     {count}
@@ -194,34 +186,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom Section */}
-      <div className={`pt-3 border-t space-y-2 ${isDark ? "border-[#1f2937]" : "border-slate-200"}`}>
+      <div className="pt-3 border-t border-gdm space-y-2">
         {/* Browser Extension Bridge Status */}
-        <div className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-[11px] ${
-          isDark ? "bg-[#0d1424] border-[#1f2937]" : "bg-slate-50 border-slate-200"
-        }`}>
+        <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-gdm bg-gdm-tableHead text-[12px]">
           <div className="flex items-center space-x-2">
             <span
               className={`w-2 h-2 rounded-full ${
-                bridgeOnline ? "bg-emerald-400 shadow-[0_0_6px_#34d399]" : "bg-rose-500"
+                bridgeOnline ? "bg-emerald-500 shadow-[0_0_6px_#10B981]" : "bg-red-500"
               }`}
             />
-            <span className={`font-semibold ${isDark ? "text-slate-200" : "text-slate-700"}`}>Browser Bridge</span>
+            <span className="font-medium text-gdm-secondary">Browser Bridge</span>
           </div>
-          <span className="font-mono text-[10px] text-slate-400 font-bold">
+          <span className="font-semibold text-gdm-secondary text-[12px]">
             :9666
           </span>
         </div>
 
-        {/* Settings button */}
+        {/* Options & Settings Button */}
         <button
           onClick={onOpenSettings}
-          className={`w-full flex items-center space-x-2 px-2.5 py-2 rounded-lg transition-colors text-xs font-semibold ${
-            isDark
-              ? "text-slate-300 hover:text-white hover:bg-[#1f2937]"
-              : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
-          }`}
+          className="w-full flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors text-[13px] font-medium text-gdm-secondary hover:text-gdm-primary hover:bg-gdm-tableHead"
         >
-          <Settings className="w-4 h-4 text-slate-400" />
+          <Settings className="w-[18px] h-[18px] text-gdm-secondary" />
           <span>Options & Settings</span>
         </button>
       </div>

@@ -6,12 +6,7 @@ import {
   Pause,
   FolderOpen,
   FileCheck,
-  CheckCircle2,
-  AlertCircle,
   Zap,
-  Clock,
-  HardDrive,
-  Cpu,
 } from "lucide-react";
 import {
   DownloadTask,
@@ -60,26 +55,31 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
   const percent = task.percent > 0 ? task.percent : total > 0 ? (downloaded / total) * 100 : 0;
   const clampedPercent = Math.min(100, Math.max(0, percent));
 
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case "downloading":
+        return "badge-status-downloading";
+      case "completed":
+        return "badge-status-completed";
+      case "paused":
+        return "badge-status-paused";
+      case "error":
+        return "badge-status-error";
+      case "assembling":
+        return "badge-status-assembling";
+      default:
+        return "badge-status-queued";
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-100 select-none">
-      <div
-        className={`w-full max-w-lg rounded-xl shadow-2xl border overflow-hidden transition-colors ${
-          isDark
-            ? "bg-[#131d2e] border-[#253350] text-slate-100"
-            : "bg-white border-slate-300 text-slate-800"
-        }`}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 select-none">
+      <div className="w-full max-w-lg rounded-xl shadow-2xl border border-gdm bg-gdm-surface overflow-hidden transition-colors">
         {/* IDM Style Titlebar */}
-        <div
-          className={`flex items-center justify-between px-3.5 py-2 border-b select-none ${
-            isDark
-              ? "bg-[#1a263d] border-[#253350] text-slate-200"
-              : "bg-gradient-to-r from-slate-100 to-slate-200 border-slate-300 text-slate-700"
-          }`}
-        >
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gdm bg-gdm-tableHead select-none">
           <div className="flex items-center space-x-2 min-w-0">
             <span className="text-base">🐐</span>
-            <span className="font-bold text-xs truncate">
+            <span className="font-semibold text-[13px] text-gdm-primary truncate">
               {isCompleted
                 ? `Download Complete - ${task.filename}`
                 : isError
@@ -91,49 +91,41 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
           <div className="flex items-center space-x-1">
             <button
               onClick={onClose}
-              className={`p-1 rounded hover:bg-black/10 transition-colors ${
-                isDark ? "hover:bg-white/10 text-slate-400" : "text-slate-600"
-              }`}
+              className="w-7 h-7 rounded-md flex items-center justify-center text-gdm-secondary hover:text-gdm-primary hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
               title="Minimize to main window"
+              aria-label="Minimize"
             >
-              <Minus className="w-3.5 h-3.5" />
+              <Minus className="w-4 h-4" />
             </button>
             <button
               onClick={onClose}
-              className={`p-1 rounded hover:bg-rose-500 hover:text-white transition-colors ${
-                isDark ? "text-slate-400" : "text-slate-600"
-              }`}
+              className="w-7 h-7 rounded-md flex items-center justify-center text-gdm-secondary hover:text-white hover:bg-red-600 transition-colors"
               title="Close dialog"
+              aria-label="Close dialog"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* Content Body */}
-        <div className="p-4 space-y-3.5">
+        <div className="p-4 space-y-4">
           {/* File Name & URL */}
-          <div
-            className={`p-3 rounded-lg border text-xs space-y-1.5 ${
-              isDark ? "bg-[#0d1424] border-[#253350]" : "bg-slate-50 border-slate-200"
-            }`}
-          >
-            <div className="flex items-baseline justify-between gap-2">
-              <span className={`text-[11px] font-bold ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+          <div className="p-3 rounded-lg border border-gdm bg-slate-50 dark:bg-slate-900/40 space-y-2">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[13px] font-medium text-gdm-secondary shrink-0">
                 File Name:
               </span>
-              <span className="font-semibold truncate text-right flex-1" title={task.filename}>
+              <span className="text-[14px] font-semibold text-gdm-primary truncate text-right flex-1" title={task.filename}>
                 {task.filename}
               </span>
             </div>
-            <div className="flex items-baseline justify-between gap-2">
-              <span className={`text-[11px] font-bold ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-[13px] font-medium text-gdm-secondary shrink-0">
                 URL:
               </span>
               <span
-                className={`truncate font-mono text-[11px] text-right flex-1 ${
-                  isDark ? "text-blue-400" : "text-blue-600"
-                }`}
+                className="truncate font-mono text-[13px] text-gdm-accent text-right flex-1"
                 title={task.url}
               >
                 {task.url}
@@ -142,111 +134,87 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
           </div>
 
           {/* Metrics Grid */}
-          <div
-            className={`grid grid-cols-2 gap-2 p-3 rounded-lg border text-xs ${
-              isDark ? "bg-[#0d1424] border-[#253350]" : "bg-slate-50 border-slate-200"
-            }`}
-          >
+          <div className="grid grid-cols-2 gap-2.5 p-3 rounded-lg border border-gdm bg-slate-50 dark:bg-slate-900/40">
             {/* Status */}
             <div className="flex items-center justify-between">
-              <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              <span className="text-[13px] font-medium text-gdm-secondary">
                 Status:
               </span>
-              <span
-                className={`font-bold px-2 py-0.5 rounded text-[11px] uppercase ${
-                  isCompleted
-                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                    : isError
-                    ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
-                    : isPaused
-                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
-                    : "bg-blue-500/15 text-blue-400 border border-blue-500/30"
-                }`}
-              >
+              <span className={`text-[12px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md ${getStatusBadgeClass(task.status)}`}>
                 {task.status}
               </span>
             </div>
 
             {/* Resume Capability */}
             <div className="flex items-center justify-between">
-              <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              <span className="text-[13px] font-medium text-gdm-secondary">
                 Resume capability:
               </span>
-              <span
-                className={`font-bold px-2 py-0.5 rounded text-[11px] ${
-                  isResumable
-                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                    : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
-                }`}
-              >
+              <span className={`text-[12px] font-semibold ${isResumable ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
                 {isResumable ? "Yes" : "No"}
               </span>
             </div>
 
             {/* File Size */}
             <div className="flex items-center justify-between">
-              <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              <span className="text-[13px] font-medium text-gdm-secondary">
                 File size:
               </span>
-              <span className="font-mono font-semibold">
+              <span className="text-[14px] font-semibold tabular-nums text-gdm-primary">
                 {total > 0 ? formatBytes(total) : "Unknown"}
               </span>
             </div>
 
             {/* Downloaded */}
             <div className="flex items-center justify-between">
-              <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              <span className="text-[13px] font-medium text-gdm-secondary">
                 Downloaded:
               </span>
-              <span className="font-mono font-semibold text-emerald-400">
+              <span className="text-[14px] font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
                 {formatBytes(downloaded)}
               </span>
             </div>
 
-            {/* Transfer Rate */}
+            {/* Transfer Rate (Warning Color Token) */}
             <div className="flex items-center justify-between">
-              <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              <span className="text-[13px] font-medium text-gdm-secondary">
                 Transfer rate:
               </span>
-              <span className="font-mono font-bold text-yellow-400 flex items-center space-x-1">
-                <Zap className="w-3 h-3 fill-current inline" />
+              <span className="text-[14px] font-semibold tabular-nums text-amber-800 dark:text-amber-400 flex items-center space-x-1">
+                <Zap className="w-3.5 h-3.5 fill-current inline" />
                 <span>{task.speed_formatted || "0 B/s"}</span>
               </span>
             </div>
 
             {/* Time Left */}
             <div className="flex items-center justify-between">
-              <span className={`text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              <span className="text-[13px] font-medium text-gdm-secondary">
                 Time left:
               </span>
-              <span className="font-mono font-semibold">
+              <span className="text-[14px] font-semibold tabular-nums text-gdm-primary">
                 {task.eta_formatted || "--"}
               </span>
             </div>
           </div>
 
-          {/* Main Progress Bar */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs font-mono font-bold">
-              <span>{clampedPercent.toFixed(1)}%</span>
-              <span className={isDark ? "text-slate-400" : "text-slate-500"}>
+          {/* Main Progress Bar: 8px high, visible track, solid accent fill */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[13px] font-semibold tabular-nums">
+              <span className="text-gdm-primary">{clampedPercent.toFixed(1)}%</span>
+              <span className="text-gdm-secondary">
                 {formatBytes(downloaded)} of {total > 0 ? formatBytes(total) : "Unknown"}
               </span>
             </div>
-            <div
-              className={`h-4 w-full rounded-md overflow-hidden border p-0.5 ${
-                isDark ? "bg-[#0d1424] border-[#253350]" : "bg-slate-200 border-slate-300"
-              }`}
-            >
+            <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded transition-all duration-200 ${
+                className={`h-full rounded-full transition-all duration-200 ${
                   isCompleted
-                    ? "bg-emerald-500"
+                    ? "bg-emerald-600 dark:bg-emerald-500"
                     : isError
-                    ? "bg-rose-500"
+                    ? "bg-red-600 dark:bg-red-500"
                     : isPaused
-                    ? "bg-amber-500"
-                    : "bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-400 animate-pulse"
+                    ? "bg-amber-600 dark:bg-amber-500"
+                    : "bg-blue-600 dark:bg-blue-400"
                 }`}
                 style={{ width: `${clampedPercent}%` }}
               />
@@ -254,12 +222,10 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
           </div>
 
           {/* Segmented Thread Visualizer (IDM Style 8-16 Chunk Bars) */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[11px] font-semibold">
-              <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                Segmented Connection:
-              </span>
-              <span className="text-blue-400 font-mono font-bold">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[12px] font-semibold text-gdm-secondary">
+              <span>Segmented Connection:</span>
+              <span className="text-gdm-accent">
                 {chunkCount} Parallel Streams
               </span>
             </div>
@@ -269,20 +235,18 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
                 return (
                   <div
                     key={i}
-                    className={`h-3 rounded-xs border overflow-hidden ${
-                      isDark ? "bg-[#0a0f1d] border-[#253350]" : "bg-slate-200 border-slate-300"
-                    }`}
+                    className="h-2.5 rounded-xs bg-slate-200 dark:bg-slate-700 overflow-hidden"
                     title={`Segment #${i + 1}`}
                   >
                     <div
-                      className={`h-full transition-all duration-300 ${
+                      className={`h-full transition-all duration-200 ${
                         isCompleted
-                          ? "bg-emerald-500"
+                          ? "bg-emerald-600 dark:bg-emerald-500"
                           : isError
-                          ? "bg-rose-500"
+                          ? "bg-red-600 dark:bg-red-500"
                           : isPaused
-                          ? "bg-amber-500"
-                          : "bg-blue-500"
+                          ? "bg-amber-600 dark:bg-amber-500"
+                          : "bg-blue-600 dark:bg-blue-400"
                       }`}
                       style={{ width: `${chunkPercent}%` }}
                     />
@@ -293,18 +257,14 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
           </div>
 
           {/* Action Buttons Row */}
-          <div
-            className={`flex items-center justify-between pt-2 border-t ${
-              isDark ? "border-[#253350]" : "border-slate-200"
-            }`}
-          >
+          <div className="flex items-center justify-between pt-3 border-t border-gdm">
             <div className="flex items-center space-x-2">
               {isDownloading && (
                 <button
                   onClick={() => onPause(task.id)}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-colors shadow"
+                  className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[13px] transition-colors shadow-xs"
                 >
-                  <Pause className="w-3.5 h-3.5" />
+                  <Pause className="w-4 h-4" />
                   <span>Pause</span>
                 </button>
               )}
@@ -312,9 +272,9 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
               {isPaused && (
                 <button
                   onClick={() => onResume(task.id)}
-                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-colors shadow"
+                  className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[13px] transition-colors shadow-xs"
                 >
-                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <Play className="w-4 h-4 fill-current" />
                   <span>Resume</span>
                 </button>
               )}
@@ -323,23 +283,23 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
                 <>
                   <button
                     onClick={() => onOpenFile(task.save_path || task.savePath || "")}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors shadow"
+                    className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[13px] transition-colors shadow-xs"
                   >
-                    <FileCheck className="w-3.5 h-3.5" />
+                    <FileCheck className="w-4 h-4" />
                     <span>Open File</span>
                   </button>
                   <button
                     onClick={() => onOpenFolder(task.save_path || task.savePath || "")}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs transition-colors shadow"
+                    className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg border border-gdm bg-gdm-surface hover:bg-slate-100 dark:hover:bg-slate-800 text-gdm-secondary hover:text-gdm-primary font-semibold text-[13px] transition-colors shadow-xs"
                   >
-                    <FolderOpen className="w-3.5 h-3.5" />
+                    <FolderOpen className="w-4 h-4" />
                     <span>Open Folder</span>
                   </button>
                 </>
               ) : (
                 <button
                   onClick={() => onCancel(task.id)}
-                  className="px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30 font-bold text-xs transition-colors"
+                  className="px-3.5 py-1.5 rounded-lg text-red-700 bg-white border border-red-300 hover:bg-red-50 dark:bg-red-950/30 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/50 font-semibold text-[13px] transition-colors"
                 >
                   Cancel
                 </button>
@@ -348,11 +308,7 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
 
             <button
               onClick={onClose}
-              className={`px-3 py-1.5 rounded-lg border font-bold text-xs transition-colors ${
-                isDark
-                  ? "bg-[#162032] border-[#253350] hover:bg-[#1f2d45] text-slate-300"
-                  : "bg-slate-100 border-slate-300 hover:bg-slate-200 text-slate-700"
-              }`}
+              className="px-3.5 py-1.5 rounded-lg border border-gdm bg-gdm-surface hover:bg-slate-100 dark:hover:bg-slate-800 text-gdm-secondary hover:text-gdm-primary font-semibold text-[13px] transition-colors"
             >
               Hide / Background
             </button>

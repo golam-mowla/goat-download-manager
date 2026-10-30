@@ -87,21 +87,69 @@ impl EngineState {
     }
 }
 
-pub fn detect_category(filename: &str) -> String {
+pub fn extension_from_mime(mime: &str) -> Option<&'static str> {
+    let clean = mime.split(';').next().unwrap_or("").trim().to_lowercase();
+    match clean.as_str() {
+        "video/mp4" => Some("mp4"),
+        "video/x-matroska" | "video/mkv" => Some("mkv"),
+        "video/webm" => Some("webm"),
+        "video/quicktime" => Some("mov"),
+        "video/x-msvideo" => Some("avi"),
+        "audio/mpeg" | "audio/mp3" => Some("mp3"),
+        "audio/mp4" | "audio/m4a" | "audio/x-m4a" => Some("m4a"),
+        "audio/flac" | "audio/x-flac" => Some("flac"),
+        "audio/ogg" | "application/ogg" => Some("ogg"),
+        "audio/wav" | "audio/x-wav" => Some("wav"),
+        "application/zip" => Some("zip"),
+        "application/x-rar-compressed" | "application/vnd.rar" => Some("rar"),
+        "application/x-7z-compressed" => Some("7z"),
+        "application/x-tar" => Some("tar"),
+        "application/gzip" => Some("tar.gz"),
+        "application/pdf" => Some("pdf"),
+        "application/x-msdownload" | "application/vnd.microsoft.portable-executable" => Some("exe"),
+        "application/x-iso9660-image" => Some("iso"),
+        _ => None,
+    }
+}
+
+pub fn detect_category_with_mime(filename: &str, content_type: Option<&str>) -> String {
     let ext = Path::new(filename)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
 
-    match ext.as_str() {
-        "mp4" | "mkv" | "avi" | "mov" | "webm" | "flv" | "wmv" | "m4v" => "video".to_string(),
-        "mp3" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "opus" | "wma" => "audio".to_string(),
-        "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "epub" | "csv" => "docs".to_string(),
-        "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "iso" => "compressed".to_string(),
-        "exe" | "msi" | "apk" | "dmg" | "deb" | "rpm" | "appimage" => "programs".to_string(),
-        _ => "docs".to_string(),
+    if !ext.is_empty() {
+        match ext.as_str() {
+            "mp4" | "mkv" | "avi" | "mov" | "webm" | "flv" | "wmv" | "m4v" => return "video".to_string(),
+            "mp3" | "wav" | "flac" | "aac" | "ogg" | "m4a" | "opus" | "wma" => return "audio".to_string(),
+            "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "epub" | "csv" => return "docs".to_string(),
+            "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" | "iso" => return "compressed".to_string(),
+            "exe" | "msi" | "apk" | "dmg" | "deb" | "rpm" | "appimage" => return "programs".to_string(),
+            _ => {}
+        }
     }
+
+    if let Some(ct) = content_type {
+        let ct_lower = ct.to_lowercase();
+        if ct_lower.starts_with("video/") {
+            return "video".to_string();
+        } else if ct_lower.starts_with("audio/") {
+            return "audio".to_string();
+        } else if ct_lower.contains("zip") || ct_lower.contains("compressed") || ct_lower.contains("tar") || ct_lower.contains("archive") {
+            return "compressed".to_string();
+        } else if ct_lower.contains("pdf") || ct_lower.contains("text") || ct_lower.contains("document") {
+            return "docs".to_string();
+        } else if ct_lower.contains("executable") || ct_lower.contains("x-msdownload") {
+            return "programs".to_string();
+        }
+    }
+
+    "docs".to_string()
+}
+
+pub fn detect_category(filename: &str) -> String {
+    detect_category_with_mime(filename, None)
 }
 
 pub fn format_speed(bytes_per_sec: u64) -> String {
@@ -178,11 +226,22 @@ pub async fn probe_url(client: &reqwest::Client, url: &str) -> Result<UrlMetadat
         }
     }
 
-    // Detect filename from Content-Disposition or URL path
-    let mut filename = "download.bin".to_string();
+    let content_type = headers.get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    // Detect filename from Content-Disposition, URL Query Params, or URL path
+    let mut filename = String::new();
+
     if let Some(cd) = headers.get(CONTENT_DISPOSITION) {
         if let Ok(cd_str) = cd.to_str() {
-            if let Some(idx) = cd_str.find("filename=") {
+            if let Some(idx) = cd_str.find("filename*=") {
+                let sub = &cd_str[idx + 10..];
+                let end = sub.find(';').unwrap_or(sub.len());
+                let raw = sub[..end].trim().trim_matches('"');
+                let enc = if let Some(p) = raw.find("''") { &raw[p + 2..] } else { raw };
+                filename = crate::decode_percent_encoded(enc);
+            } else if let Some(idx) = cd_str.find("filename=") {
                 let mut name = cd_str[idx + 9..].trim().trim_matches('"').to_string();
                 if let Some(semi) = name.find(';') {
                     name = name[..semi].trim().trim_matches('"').to_string();
@@ -194,22 +253,54 @@ pub async fn probe_url(client: &reqwest::Client, url: &str) -> Result<UrlMetadat
         }
     }
 
-    if filename == "download.bin" {
+    // Inspect URL Query parameters for filename
+    if filename.is_empty() {
         if let Ok(parsed) = reqwest::Url::parse(url) {
-            let path_segments: Vec<&str> = parsed.path_segments().map(|c| c.collect()).unwrap_or_default();
-            if let Some(last) = path_segments.last() {
-                if !last.trim().is_empty() {
-                    filename = last.to_string();
+            for (k, v) in parsed.query_pairs() {
+                if k == "filename" || k == "name" || k == "title" {
+                    if !v.trim().is_empty() {
+                        filename = v.trim().to_string();
+                        break;
+                    }
+                } else if k == "response-content-disposition" {
+                    if let Some(idx) = v.find("filename=") {
+                        let sub = &v[idx + 9..];
+                        let end = sub.find(';').unwrap_or(sub.len());
+                        let name = sub[..end].trim().trim_matches('"').to_string();
+                        if !name.is_empty() {
+                            filename = name;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if filename.is_empty() {
+                let path_segments: Vec<&str> = parsed.path_segments().map(|c| c.collect()).unwrap_or_default();
+                if let Some(last) = path_segments.last() {
+                    let clean_last = last.trim();
+                    if !clean_last.is_empty() && clean_last != "/" {
+                        filename = clean_last.to_string();
+                    }
                 }
             }
         }
     }
 
-    let content_type = headers.get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
+    if filename.is_empty() {
+        filename = "download.bin".to_string();
+    }
 
-    let category = detect_category(&filename);
+    // If filename has no extension (e.g. hash '06470d56ae4338382cd84ac7b6afc308'), deduce from Content-Type
+    if !filename.contains('.') {
+        if let Some(ref ct) = content_type {
+            if let Some(ext) = extension_from_mime(ct) {
+                filename = format!("{}.{}", filename, ext);
+            }
+        }
+    }
+
+    let category = detect_category_with_mime(&filename, content_type.as_deref());
 
     Ok(UrlMetadata {
         url: url.to_string(),
@@ -517,36 +608,62 @@ pub async fn execute_multithreaded_download(
         return Err(err_msg);
     }
 
-    // --- IDM-Style Assembly Phase ---
+    // --- IDM-Style High-Performance Assembly Phase ---
     {
         let mut tasks = state.tasks.write().await;
         if let Some(t) = tasks.get_mut(&task_id) {
             t.status = "assembling".to_string();
+            let _ = app.emit("download-progress", t.clone());
             let _ = app.emit("gdm://progress", t.clone());
         }
     }
 
     let target_dest = PathBuf::from(&save_path);
     if let Some(parent) = target_dest.parent() {
-        fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+        let _ = fs::create_dir_all(parent).await;
     }
 
-    let mut dest_file = File::create(&target_dest).await.map_err(|e| e.to_string())?;
-    let mut merge_buf = vec![0u8; 1024 * 1024]; // 1 MB chunk merge buffer for maximum throughput
-
-    for i in 0..chunk_count {
-        let part_file_path = temp_dir.join(format!("chunk_{}.part", i));
-        if let Ok(mut part_file) = File::open(&part_file_path).await {
-            loop {
-                let n = part_file.read(&mut merge_buf).await.map_err(|e| e.to_string())?;
-                if n == 0 { break; }
-                dest_file.write_all(&merge_buf[..n]).await.map_err(|e| e.to_string())?;
+    // Optimization: If single chunk, rename/move immediately (instantaneous 0.001s!)
+    if chunk_count <= 1 {
+        let single_part = temp_dir.join("chunk_0.part");
+        if single_part.exists() {
+            let _ = fs::remove_file(&target_dest).await;
+            if fs::rename(&single_part, &target_dest).await.is_err() {
+                let _ = fs::copy(&single_part, &target_dest).await;
+                let _ = fs::remove_file(&single_part).await;
             }
         }
-    }
+    } else {
+        // Multi-chunk: move chunk 0 as base file, then append chunk 1..N using 8 MB buffer
+        let first_part = temp_dir.join("chunk_0.part");
+        let _ = fs::remove_file(&target_dest).await;
+        let mut start_idx = 0;
+        if fs::rename(&first_part, &target_dest).await.is_ok() {
+            start_idx = 1;
+        }
 
-    dest_file.flush().await.map_err(|e| e.to_string())?;
-    drop(dest_file);
+        let mut dest_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&target_dest)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let mut merge_buf = vec![0u8; 8 * 1024 * 1024]; // 8 MB buffer for lightning-fast disk I/O
+
+        for i in start_idx..chunk_count {
+            let part_file_path = temp_dir.join(format!("chunk_{}.part", i));
+            if let Ok(mut part_file) = File::open(&part_file_path).await {
+                loop {
+                    let n = part_file.read(&mut merge_buf).await.map_err(|e| e.to_string())?;
+                    if n == 0 { break; }
+                    dest_file.write_all(&merge_buf[..n]).await.map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        dest_file.flush().await.map_err(|e| e.to_string())?;
+        drop(dest_file);
+    }
 
     // Clean up temporary segment directory
     let _ = fs::remove_dir_all(&temp_dir).await;

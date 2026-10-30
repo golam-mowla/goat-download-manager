@@ -29,6 +29,7 @@ export const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [modalInitialUrl, setModalInitialUrl] = useState("");
+  const [modalInitialFilename, setModalInitialFilename] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [defaultDir, setDefaultDir] = useState("D:\\Downloads");
   const [bridgeOnline, setBridgeOnline] = useState(true);
@@ -183,13 +184,18 @@ export const App: React.FC = () => {
     const handleOpenUrl = (event: { payload: any }) => {
       const raw = event.payload;
       let targetUrl = "";
+      let targetFilename = "";
       if (typeof raw === "string") {
         targetUrl = raw;
       } else if (raw && typeof raw === "object" && raw.url) {
         targetUrl = String(raw.url);
+        if (raw.filename) {
+          targetFilename = String(raw.filename);
+        }
       }
       if (targetUrl && targetUrl.trim()) {
         setModalInitialUrl(targetUrl.trim());
+        setModalInitialFilename(targetFilename.trim());
         setIsAddModalOpen(true);
       }
     };
@@ -443,11 +449,7 @@ export const App: React.FC = () => {
   const isDark = theme === "dark";
 
   return (
-    <div
-      className={`flex h-screen w-screen overflow-hidden font-sans transition-colors duration-150 ${
-        isDark ? "bg-[#0b1120] text-slate-100" : "bg-[#f8fafc] text-slate-900"
-      }`}
-    >
+    <div className="flex h-screen w-screen overflow-hidden font-sans bg-gdm-app text-gdm-primary transition-colors duration-150">
       {/* Left Sidebar (IDM Category Tree + Status) */}
       <Sidebar
         selectedCategory={selectedCategory}
@@ -460,6 +462,7 @@ export const App: React.FC = () => {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenMediaModal={() => {
           setModalInitialUrl("");
+          setModalInitialFilename("");
           setIsAddModalOpen(true);
         }}
         theme={theme}
@@ -471,6 +474,7 @@ export const App: React.FC = () => {
         <Toolbar
           onAddUrl={() => {
             setModalInitialUrl("");
+            setModalInitialFilename("");
             setIsAddModalOpen(true);
           }}
           onResumeSelected={() => selectedTaskId && handleResume(selectedTaskId)}
@@ -480,6 +484,7 @@ export const App: React.FC = () => {
           onClearCompleted={handleClearCompleted}
           onOpenMediaGrabber={() => {
             setModalInitialUrl("");
+            setModalInitialFilename("");
             setIsAddModalOpen(true);
           }}
           onOpenSettings={() => setIsSettingsOpen(true)}
@@ -491,13 +496,7 @@ export const App: React.FC = () => {
         />
 
         {/* Top Search, Status & View Toggle Bar */}
-        <div
-          className={`px-5 py-2.5 border-b flex items-center justify-between gap-4 z-10 select-none transition-colors ${
-            isDark
-              ? "bg-[#0e1626] border-[#1e293b]"
-              : "bg-white border-slate-200"
-          }`}
-        >
+        <div className="px-5 py-2.5 border-b border-gdm bg-gdm-surface flex items-center justify-between gap-4 z-10 select-none transition-colors">
           {/* Search Bar */}
           <div className="flex-1 max-w-md">
             <TopBar
@@ -510,6 +509,7 @@ export const App: React.FC = () => {
               totalTasksCount={tasks.length}
               onOpenAddModal={() => {
                 setModalInitialUrl("");
+                setModalInitialFilename("");
                 setIsAddModalOpen(true);
               }}
               onClearCompleted={handleClearCompleted}
@@ -519,23 +519,16 @@ export const App: React.FC = () => {
           </div>
 
           {/* View Mode Toggle (Table / Card) */}
-          <div
-            className={`flex items-center space-x-1 p-1 rounded-xl border transition-colors ${
-              isDark
-                ? "bg-[#111827] border-[#1e293b]"
-                : "bg-slate-100 border-slate-300"
-            }`}
-          >
+          <div className="flex items-center space-x-1 p-1 rounded-xl border border-gdm bg-gdm-surface transition-colors">
             <button
               onClick={() => setViewMode("table")}
               className={`p-1.5 rounded-lg transition-all ${
                 viewMode === "table"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : isDark
-                  ? "text-slate-400 hover:text-white"
-                  : "text-slate-500 hover:text-slate-900"
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "text-gdm-secondary hover:text-gdm-primary"
               }`}
               title="Classic IDM Table View"
+              aria-label="Table View"
             >
               <List className="w-4 h-4" />
             </button>
@@ -543,12 +536,11 @@ export const App: React.FC = () => {
               onClick={() => setViewMode("cards")}
               className={`p-1.5 rounded-lg transition-all ${
                 viewMode === "cards"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : isDark
-                  ? "text-slate-400 hover:text-white"
-                  : "text-slate-500 hover:text-slate-900"
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "text-gdm-secondary hover:text-gdm-primary"
               }`}
               title="Modern Card View"
+              aria-label="Card View"
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
@@ -569,10 +561,10 @@ export const App: React.FC = () => {
               </div>
 
               <div className="max-w-md space-y-2">
-                <h2 className={`text-xl font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                <h2 className="text-xl font-bold text-gdm-primary">
                   Goat Download Manager (GDM)
                 </h2>
-                <p className={`text-xs leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                <p className="text-[13px] leading-relaxed text-gdm-secondary">
                   High-speed 16-segment HTTP download acceleration & all-in-one social media stream extractor.
                   Paste any download link above or use the browser extension to intercept downloads.
                 </p>
@@ -580,9 +572,10 @@ export const App: React.FC = () => {
                   <button
                     onClick={() => {
                       setModalInitialUrl("");
+                      setModalInitialFilename("");
                       setIsAddModalOpen(true);
                     }}
-                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow transition-colors inline-flex items-center space-x-2"
+                    className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-[13px] shadow-xs transition-colors inline-flex items-center space-x-2"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Add New Download</span>
@@ -605,6 +598,7 @@ export const App: React.FC = () => {
               onDelete={handleDelete}
               onOpenFile={handleOpenFile}
               onOpenFolder={handleOpenFolder}
+              theme={theme}
             />
           ) : (
             /* Card View */
@@ -619,6 +613,7 @@ export const App: React.FC = () => {
                   onDelete={handleDelete}
                   onOpenFile={handleOpenFile}
                   onOpenFolder={handleOpenFolder}
+                  theme={theme}
                 />
               ))}
             </div>
@@ -646,6 +641,7 @@ export const App: React.FC = () => {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         defaultUrl={modalInitialUrl}
+        defaultFilename={modalInitialFilename}
         onAddDirectDownload={handleAddDirectDownload}
         onAddMediaDownload={handleAddMediaDownload}
         theme={theme}
