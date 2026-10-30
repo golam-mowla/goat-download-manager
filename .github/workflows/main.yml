@@ -1,4 +1,4 @@
-name: "Release & Build GM Downloader"
+name: "Release & Build Goat Download Manager"
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Install Frontend Dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build Tauri 2 App & Create Release
         uses: tauri-apps/tauri-action@v0
@@ -49,8 +49,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
-          releaseName: 'GM Downloader v__VERSION__'
-          releaseBody: 'Automated build and release of GM Downloader (Tauri 2 + React + Rust).'
+          releaseName: 'Goat Download Manager v__VERSION__'
+          releaseBody: 'Automated release build of Goat Download Manager (GDM).'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
@@ -58,9 +58,9 @@ jobs:
       - name: Upload Windows Executable Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GM-Downloader-Windows-x64
+          name: GDM-Windows-x64
           path: |
-            src-tauri/target/release/gm-downloader.exe
+            src-tauri/target/release/gdm.exe
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: warn
