@@ -1,4 +1,5 @@
-// Download with Parrot - Intelligent Media Link Grabber (content.js)
+// Goat Download Manager (GDM) - Content Script & Video Grabber
+
 (() => {
   let lastRightClickedElement = null;
   let lastDetectedMediaUrl = null;
@@ -16,270 +17,249 @@
     return clean.startsWith("http://") || clean.startsWith("https://");
   }
 
-  // Listen to right-click / contextmenu events
-  document.addEventListener(
-    "contextmenu",
-    (e) => {
+  // Right-click media URL tracker
+  document.addEventListener("contextmenu", (e) => {
+    lastRightClickedElement = e.target;
+    lastDetectedMediaUrl = extractMediaUrl(e.target);
+  }, true);
+
+  document.addEventListener("mousedown", (e) => {
+    if (e.button === 2) {
       lastRightClickedElement = e.target;
       lastDetectedMediaUrl = extractMediaUrl(e.target);
-    },
-    true
-  );
-
-  document.addEventListener(
-    "mousedown",
-    (e) => {
-      if (e.button === 2) {
-        lastRightClickedElement = e.target;
-        lastDetectedMediaUrl = extractMediaUrl(e.target);
-      }
-    },
-    true
-  );
+    }
+  }, true);
 
   function extractMediaUrl(element) {
     if (!element) return window.location.href;
-
     const hostname = window.location.hostname;
 
-    // 1. INSTAGRAM DETECTION
+    // 1. Instagram
     if (hostname.includes("instagram.com")) {
       const path = window.location.pathname;
-      if (
-        path.startsWith("/reel/") ||
-        path.startsWith("/p/") ||
-        path.startsWith("/tv/")
-      ) {
+      if (path.startsWith("/reel/") || path.startsWith("/p/") || path.startsWith("/tv/")) {
         return `${window.location.origin}${path}`;
       }
-
-      // Check feed article or reel card
-      const article =
-        element.closest("article") ||
-        element.closest('div[role="dialog"]') ||
-        element.closest("div._aagv") ||
-        element.closest("div._ab8w");
-
+      const article = element.closest("article") || element.closest('div[role="dialog"]');
       if (article) {
-        const link = article.querySelector(
-          'a[href*="/reel/"], a[href*="/p/"], a[href*="/tv/"]'
-        );
+        const link = article.querySelector('a[href*="/reel/"], a[href*="/p/"]');
         if (link && link.getAttribute("href")) {
           return new URL(link.getAttribute("href"), window.location.origin).href;
         }
-
-        const timeEl = article.querySelector("time");
-        if (timeEl) {
-          const timeLink = timeEl.closest("a");
-          if (timeLink && timeLink.getAttribute("href")) {
-            return new URL(timeLink.getAttribute("href"), window.location.origin).href;
-          }
-        }
       }
-
-      const nearestAnchor = element.closest("a");
-      if (nearestAnchor && nearestAnchor.getAttribute("href")) {
-        const href = nearestAnchor.getAttribute("href");
-        if (
-          href.includes("/p/") ||
-          href.includes("/reel/") ||
-          href.includes("/tv/")
-        ) {
-          return new URL(href, window.location.origin).href;
-        }
-      }
-
       return window.location.href;
     }
 
-    // 2. YOUTUBE DETECTION (Never use blob or video element src on YouTube)
+    // 2. YouTube
     if (hostname.includes("youtube.com") || hostname.includes("youtu.be")) {
-      if (hostname.includes("youtu.be")) {
-        return window.location.href;
-      }
-      if (
-        window.location.pathname.startsWith("/watch") ||
-        window.location.pathname.startsWith("/shorts/")
-      ) {
-        return window.location.href;
-      }
-
-      // Thumbnail or card on feed/search
-      const card = element.closest(
-        "ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer, ytd-reel-video-renderer, ytd-rich-grid-media"
-      );
-      if (card) {
-        const titleAnchor = card.querySelector(
-          "a#video-title, a#thumbnail, a.ytd-thumbnail, a[href*='/watch'], a[href*='/shorts/']"
-        );
-        if (titleAnchor && titleAnchor.getAttribute("href")) {
-          return new URL(titleAnchor.getAttribute("href"), "https://www.youtube.com").href;
-        }
-      }
-
-      const ytAnchor = element.closest("a#thumbnail, a#video-title, a[href*='/watch'], a[href*='/shorts/']");
-      if (ytAnchor && ytAnchor.getAttribute("href")) {
-        return new URL(ytAnchor.getAttribute("href"), "https://www.youtube.com").href;
-      }
-
       return window.location.href;
     }
 
-    // 3. FACEBOOK DETECTION
-    if (hostname.includes("facebook.com")) {
-      const fbAnchor = element.closest(
-        'a[href*="/videos/"], a[href*="/reel/"], a[href*="/watch/"], a[href*="fb.watch"]'
-      );
-      if (fbAnchor && fbAnchor.getAttribute("href")) {
-        return new URL(fbAnchor.getAttribute("href"), window.location.origin).href;
-      }
-
-      const fbArticle = element.closest('[role="article"]');
-      if (fbArticle) {
-        const vidLink = fbArticle.querySelector(
-          'a[href*="/videos/"], a[href*="/reel/"], a[href*="/watch/"]'
-        );
-        if (vidLink && vidLink.getAttribute("href")) {
-          return new URL(vidLink.getAttribute("href"), window.location.origin).href;
-        }
-      }
-
-      return window.location.href;
-    }
-
-    // 4. TIKTOK DETECTION
+    // 3. TikTok
     if (hostname.includes("tiktok.com")) {
-      if (window.location.pathname.includes("/video/")) {
-        return window.location.href;
-      }
-      const ttAnchor = element.closest('a[href*="/video/"]');
-      if (ttAnchor && ttAnchor.getAttribute("href")) {
-        return new URL(ttAnchor.getAttribute("href"), window.location.origin).href;
-      }
       return window.location.href;
     }
 
-    // 5. TWITTER / X DETECTION
-    if (hostname.includes("twitter.com") || hostname.includes("x.com")) {
-      const tweetArticle = element.closest("article");
-      if (tweetArticle) {
-        const statusLink = tweetArticle.querySelector('a[href*="/status/"]');
-        if (statusLink && statusLink.getAttribute("href")) {
-          return new URL(statusLink.getAttribute("href"), window.location.origin).href;
-        }
-      }
+    // 4. Facebook / Twitter
+    if (hostname.includes("facebook.com") || hostname.includes("fb.watch") || hostname.includes("twitter.com") || hostname.includes("x.com")) {
       return window.location.href;
     }
 
-    // 6. DIRECT HTML5 VIDEO OR AUDIO TAG (strictly NO blobs!)
-    const video =
-      element.tagName === "VIDEO"
-        ? element
-        : element.querySelector("video") || element.closest("video");
-    if (video) {
-      if (isValidDownloadUrl(video.src)) return video.src;
-      if (isValidDownloadUrl(video.currentSrc)) return video.currentSrc;
-      const source = video.querySelector("source");
-      if (source && isValidDownloadUrl(source.src)) return source.src;
+    // 5. HTML5 Video / Audio elements
+    if (element.tagName === "VIDEO" || element.tagName === "AUDIO") {
+      if (element.currentSrc && isValidDownloadUrl(element.currentSrc)) return element.currentSrc;
+      if (element.src && isValidDownloadUrl(element.src)) return element.src;
     }
 
-    // 7. NEAREST HYPERLINK
-    const anchor = element.closest("a[href]");
-    if (anchor && isValidDownloadUrl(anchor.href)) {
+    const parentVideo = element.closest("video");
+    if (parentVideo) {
+      if (parentVideo.currentSrc && isValidDownloadUrl(parentVideo.currentSrc)) return parentVideo.currentSrc;
+      if (parentVideo.src && isValidDownloadUrl(parentVideo.src)) return parentVideo.src;
+    }
+
+    // Anchor links
+    const anchor = element.closest("a");
+    if (anchor && anchor.href && isValidDownloadUrl(anchor.href)) {
       return anchor.href;
     }
 
-    // 8. FALLBACK TO CURRENT TAB URL
     return window.location.href;
   }
 
-  // Handle messages from background worker
+  // ---------------------------------------------------------------------------
+  // IDM-Style Floating Video Grabber Button
+  // ---------------------------------------------------------------------------
+  let activeGrabberButton = null;
+  let hoveredVideo = null;
+
+  function createVideoGrabber() {
+    if (document.getElementById("gdm-floating-grabber")) return;
+
+    const btn = document.createElement("div");
+    btn.id = "gdm-floating-grabber";
+    btn.innerHTML = `
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:14px;">🐐</span>
+        <span style="font-size:11px;font-weight:700;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;">Download with GDM</span>
+      </div>
+    `;
+
+    // Styling
+    Object.assign(btn.style, {
+      position: "fixed",
+      zIndex: "2147483647",
+      display: "none",
+      alignItems: "center",
+      padding: "6px 12px",
+      borderRadius: "8px",
+      background: "linear-gradient(135deg, rgba(147, 51, 234, 0.92), rgba(219, 39, 119, 0.92))",
+      color: "#ffffff",
+      boxShadow: "0 4px 18px rgba(0,0,0,0.4), 0 0 10px rgba(168,85,247,0.4)",
+      border: "1px solid rgba(255,255,255,0.25)",
+      cursor: "pointer",
+      userSelect: "none",
+      transition: "opacity 0.2s ease, transform 0.2s ease",
+      backdropFilter: "blur(8px)",
+      opacity: "0",
+      pointerEvents: "none",
+    });
+
+    btn.addEventListener("mouseenter", () => {
+      btn.style.transform = "scale(1.04)";
+      btn.style.boxShadow = "0 6px 22px rgba(168,85,247,0.6)";
+    });
+
+    btn.addEventListener("mouseleave", () => {
+      btn.style.transform = "scale(1)";
+    });
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const targetUrl = window.location.href;
+      chrome.runtime.sendMessage({ action: "SEND_TO_GDM", url: targetUrl });
+      btn.style.display = "none";
+    });
+
+    document.body.appendChild(btn);
+    activeGrabberButton = btn;
+  }
+
+  // Detect videos on page
+  function attachVideoListeners() {
+    createVideoGrabber();
+    const videos = document.querySelectorAll("video");
+
+    videos.forEach((vid) => {
+      if (vid.dataset.gdmAttached) return;
+      vid.dataset.gdmAttached = "true";
+
+      vid.addEventListener("mouseenter", () => {
+        hoveredVideo = vid;
+        positionGrabber(vid);
+      });
+
+      vid.addEventListener("mouseleave", (e) => {
+        setTimeout(() => {
+          if (!activeGrabberButton || activeGrabberButton.matches(":hover")) return;
+          if (hoveredVideo === vid && !vid.matches(":hover")) {
+            activeGrabberButton.style.opacity = "0";
+            activeGrabberButton.style.pointerEvents = "none";
+          }
+        }, 300);
+      });
+    });
+  }
+
+  function positionGrabber(video) {
+    if (!activeGrabberButton) return;
+    const rect = video.getBoundingClientRect();
+    if (rect.width < 140 || rect.height < 100) return; // Ignore small previews
+
+    const top = Math.max(10, rect.top + 10);
+    const right = Math.max(10, window.innerWidth - rect.right + 10);
+
+    activeGrabberButton.style.top = `${top}px`;
+    activeGrabberButton.style.right = `${right}px`;
+    activeGrabberButton.style.display = "flex";
+    activeGrabberButton.style.opacity = "1";
+    activeGrabberButton.style.pointerEvents = "auto";
+  }
+
+  // Periodic scan for dynamic videos (YouTube, Instagram)
+  setInterval(attachVideoListeners, 2000);
+
+  // Message listener from popup and background
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "GET_LAST_CLICKED_MEDIA") {
-      let resolved = lastDetectedMediaUrl;
-      if (!isValidDownloadUrl(resolved) && lastRightClickedElement) {
-        resolved = extractMediaUrl(lastRightClickedElement);
-      }
-      if (!isValidDownloadUrl(resolved)) {
-        resolved = window.location.href;
-      }
-      sendResponse({ url: resolved, pageUrl: window.location.href });
+      sendResponse({ url: lastDetectedMediaUrl || window.location.href });
       return true;
     }
 
     if (request.action === "SHOW_TOAST") {
-      showParrotToast(
-        request.title || "GM Downloader",
-        request.message,
-        request.status || "info"
-      );
-      sendResponse({ shown: true });
+      showToast(request.title, request.message, request.status);
+      sendResponse({ received: true });
       return true;
     }
   });
 
-  // Floating Toast Notification
-  function showParrotToast(title, message, status) {
-    const existing = document.getElementById("parrot-floating-toast");
-    if (existing) existing.remove();
-
-    const toast = document.createElement("div");
-    toast.id = "parrot-floating-toast";
-
-    let bgGrad = "linear-gradient(135deg, #0ea5e9, #0284c7)";
-    let iconEmoji = "🦜";
-
-    if (status === "success") {
-      bgGrad = "linear-gradient(135deg, #10b981, #059669)";
-      iconEmoji = "✔";
-    } else if (status === "warning" || status === "error") {
-      bgGrad = "linear-gradient(135deg, #f59e0b, #d97706)";
-      iconEmoji = "⚠";
+  // Sleek In-Page Toast Notification
+  function showToast(title, message, status = "info") {
+    let container = document.getElementById("gdm-toast-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "gdm-toast-container";
+      Object.assign(container.style, {
+        position: "fixed",
+        bottom: "20px",
+        right: "20px",
+        zIndex: "2147483647",
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        pointerEvents: "none",
+        fontFamily: "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif",
+      });
+      document.body.appendChild(container);
     }
 
-    Object.assign(toast.style, {
-      position: "fixed",
-      bottom: "24px",
-      right: "24px",
-      zIndex: "2147483647",
-      display: "flex",
-      alignItems: "center",
-      gap: "12px",
-      padding: "12px 18px",
-      borderRadius: "14px",
-      background: bgGrad,
-      color: "#ffffff",
-      fontFamily:
-        "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-      fontSize: "13px",
-      fontWeight: "500",
-      boxShadow:
-        "0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2)",
-      transition: "all 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
-      opacity: "0",
-      transform: "translateY(20px) scale(0.95)",
-      pointerEvents: "none",
-    });
-
+    const toast = document.createElement("div");
     toast.innerHTML = `
-      <div style="font-size: 20px; line-height: 1;">${iconEmoji}</div>
-      <div style="display: flex; flex-direction: column;">
-        <span style="font-weight: 700; font-size: 13px; letter-spacing: -0.01em;">${title}</span>
-        <span style="font-size: 12px; opacity: 0.95; margin-top: 2px;">${message}</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">🐐</span>
+        <div>
+          <div style="font-weight:700;font-size:12px;color:#f8fafc;">${title || "Goat Download Manager"}</div>
+          <div style="font-size:11px;color:#cbd5e1;margin-top:2px;">${message || ""}</div>
+        </div>
       </div>
     `;
 
-    document.body.appendChild(toast);
+    Object.assign(toast.style, {
+      background: "rgba(15, 10, 30, 0.95)",
+      border: "1px solid rgba(168, 85, 247, 0.4)",
+      boxShadow: "0 8px 30px rgba(0,0,0,0.5), 0 0 15px rgba(168,85,247,0.3)",
+      backdropFilter: "blur(12px)",
+      color: "#ffffff",
+      padding: "10px 16px",
+      borderRadius: "12px",
+      minWidth: "260px",
+      maxWidth: "340px",
+      transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+      opacity: "0",
+      transform: "translateY(15px)",
+      pointerEvents: "auto",
+    });
 
+    container.appendChild(toast);
     requestAnimationFrame(() => {
       toast.style.opacity = "1";
-      toast.style.transform = "translateY(0) scale(1)";
+      toast.style.transform = "translateY(0)";
     });
 
     setTimeout(() => {
       toast.style.opacity = "0";
-      toast.style.transform = "translateY(15px) scale(0.95)";
-      setTimeout(() => toast.remove(), 400);
-    }, 3800);
+      toast.style.transform = "translateY(15px)";
+      setTimeout(() => toast.remove(), 350);
+    }, 3200);
   }
 })();

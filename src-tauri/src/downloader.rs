@@ -283,7 +283,7 @@ pub async fn execute_multithreaded_download(
         let mut chunk_cancel = cancel_tx.subscribe();
         let shared_downloaded = shared_downloaded.clone();
 
-        let handle = tokio::spawn(async move {
+        let handle = tauri::async_runtime::spawn(async move {
             let mut file = OpenOptions::new()
                 .create(true)
                 .write(true)
@@ -341,7 +341,7 @@ pub async fn execute_multithreaded_download(
     let monitor_downloaded = shared_downloaded.clone();
     let mut monitor_cancel = cancel_tx.subscribe();
 
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let mut last_downloaded = monitor_downloaded.load(Ordering::Relaxed);
         let mut last_instant = Instant::now();
         let mut speed_window: Vec<u64> = Vec::new();

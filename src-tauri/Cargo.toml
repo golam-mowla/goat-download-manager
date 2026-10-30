@@ -1,13 +1,13 @@
 [package]
 name = "gdm"
-version = "1.0.0"
+version = "1.0.1"
 description = "Goat Download Manager (GDM) - High-performance multithreaded HTTP and media downloader"
 authors = ["Golam Mowla"]
 edition = "2021"
 
 [lib]
 name = "gdm_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["staticlib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -1,79 +1,90 @@
-// Download with Parrot - Popup Logic
-document.addEventListener("DOMContentLoaded", async () => {
-  const currentUrlBox = document.getElementById("current-url");
-  const btnDownloadCurrent = document.getElementById("btn-download-current");
-  const customUrlInput = document.getElementById("custom-url-input");
-  const btnDownloadCustom = document.getElementById("btn-download-custom");
-  const statusDot = document.getElementById("status-dot");
-  const statusText = document.getElementById("status-text");
+// Goat Download Manager (GDM) - Popup Script
 
-  let activeTabUrl = "";
+const statusPill = document.getElementById("status-pill");
+const statusDot = document.getElementById("status-dot");
+const statusText = document.getElementById("status-text");
+const currentUrlEl = document.getElementById("current-url");
+const btnDownloadCurrent = document.getElementById("btn-download-current");
+const customUrlInput = document.getElementById("custom-url-input");
+const btnDownloadCustom = document.getElementById("btn-download-custom");
+const toggleInterception = document.getElementById("toggle-interception");
 
-  // 1. Get active tab URL
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("brave://")) {
-      activeTabUrl = tab.url;
-      currentUrlBox.textContent = activeTabUrl;
+let detectedUrl = "";
+
+// Check GDM Desktop App status on open
+function checkStatus() {
+  chrome.runtime.sendMessage({ action: "CHECK_GDM_STATUS" }, (response) => {
+    if (response && response.online) {
+      statusPill.className = "status-pill online";
+      statusText.textContent = "Engine Online (:9666)";
     } else {
-      currentUrlBox.textContent = "No downloadable tab active";
-      btnDownloadCurrent.disabled = true;
+      statusPill.className = "status-pill";
+      statusText.textContent = "Offline / Closed";
     }
-  } catch (err) {
-    currentUrlBox.textContent = "Could not read tab URL";
-  }
-
-  // 2. Check desktop app status
-  checkParrotStatus();
-
-  function checkParrotStatus() {
-    chrome.runtime.sendMessage({ action: "CHECK_PARROT_STATUS" }, (resp) => {
-      if (resp && resp.online) {
-        statusDot.className = "status-dot online";
-        statusText.textContent = "Parrot Ready (Desktop Connected)";
-      } else {
-        statusDot.className = "status-dot offline";
-        statusText.textContent = "Parrot Standby (Auto-Launch Enabled)";
-      }
-    });
-  }
-
-  // 3. Download current tab
-  btnDownloadCurrent.addEventListener("click", async () => {
-    if (!activeTabUrl) return;
-    btnDownloadCurrent.disabled = true;
-    btnDownloadCurrent.textContent = "Sending to Parrot...";
-
-    try {
-      await navigator.clipboard.writeText(activeTabUrl);
-    } catch {}
-
-    chrome.runtime.sendMessage(
-      { action: "SEND_TO_PARROT", url: activeTabUrl },
-      (res) => {
-        btnDownloadCurrent.textContent = "✔ Sent to Parrot!";
-        setTimeout(() => window.close(), 1200);
-      }
-    );
   });
+}
 
-  // 4. Download custom URL
-  btnDownloadCustom.addEventListener("click", async () => {
-    const customUrl = customUrlInput.value.trim();
-    if (!customUrl) return;
-    btnDownloadCustom.disabled = true;
-    btnDownloadCustom.textContent = "Sending...";
+// Check interception storage preference
+chrome.storage.local.get(["interceptDownloads"], (result) => {
+  if (result.interceptDownloads !== undefined) {
+    toggleInterception.checked = result.interceptDownloads;
+  }
+});
 
-    try {
-      await navigator.clipboard.writeText(customUrl);
-    } catch {}
+toggleInterception.addEventListener("change", () => {
+  chrome.storage.local.set({ interceptDownloads: toggleInterception.checked });
+});
 
-    chrome.runtime.sendMessage(
-      { action: "SEND_TO_PARROT", url: customUrl },
-      (res) => {
-        btnDownloadCustom.textContent = "✔ Sent!";
-        setTimeout(() => window.close(), 1200);
-      }
-    );
+// Detect current active tab URL & media
+chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+  if (!tabs || !tabs[0]) return;
+  const activeTab = tabs[0];
+  detectedUrl = activeTab.url || "";
+
+  // Ask content script for detected media element URL
+  try {
+    const resp = await chrome.tabs.sendMessage(activeTab.id, { action: "GET_LAST_CLICKED_MEDIA" });
+    if (resp && resp.url) {
+      detectedUrl = resp.url;
+    }
+  } catch (e) {
+    // Content script not ready or page restricted
+  }
+
+  currentUrlEl.textContent = detectedUrl || "No media detected on current tab";
+  currentUrlEl.title = detectedUrl;
+});
+
+// Download current media button
+btnDownloadCurrent.addEventListener("click", () => {
+  if (!detectedUrl || detectedUrl.startsWith("chrome://")) return;
+  btnDownloadCurrent.textContent = "Sending to GDM Engine...";
+  chrome.runtime.sendMessage({ action: "SEND_TO_GDM", url: detectedUrl }, () => {
+    btnDownloadCurrent.textContent = "✓ Sent to GDM!";
+    setTimeout(() => {
+      window.close();
+    }, 800);
   });
 });
+
+// Send custom URL button
+btnDownloadCustom.addEventListener("click", () => {
+  const url = (customUrlInput.value || "").trim();
+  if (!url) return;
+  btnDownloadCustom.textContent = "...";
+  chrome.runtime.sendMessage({ action: "SEND_TO_GDM", url }, () => {
+    btnDownloadCustom.textContent = "Sent!";
+    setTimeout(() => {
+      window.close();
+    }, 700);
+  });
+});
+
+customUrlInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    btnDownloadCustom.click();
+  }
+});
+
+checkStatus();
+setInterval(checkStatus, 3000);

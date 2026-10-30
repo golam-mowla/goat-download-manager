@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
-use tauri::{command, AppHandle, Emitter, Manager, State};
+use tauri::{command, AppHandle, Emitter, State};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;

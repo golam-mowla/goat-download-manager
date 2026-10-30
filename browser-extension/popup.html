@@ -3,46 +3,72 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Download with Parrot</title>
+  <title>Goat Download Manager</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div class="header">
-    <div class="logo-box">
-      <img src="icons/icon48.png" alt="Parrot" class="logo-img">
-      <div class="title-group">
-        <span class="app-title">GM Downloader</span>
-        <span class="app-sub">Download with Parrot</span>
+  <!-- Top GDM Header -->
+  <div class="gdm-header">
+    <div class="brand-group">
+      <div class="goat-avatar">
+        <span class="goat-emoji">🐐</span>
+      </div>
+      <div class="brand-text">
+        <div class="brand-title">
+          <span class="gdm-name">GDM</span>
+          <span class="pro-tag">PRO</span>
+        </div>
+        <span class="brand-subtitle">Goat Download Manager</span>
       </div>
     </div>
-    <span class="version-badge">v2.0.2</span>
-  </div>
-
-  <div class="status-card">
-    <div class="status-indicator">
-      <span class="status-dot" id="status-dot"></span>
-      <span class="status-text" id="status-text">Checking Desktop App...</span>
+    <div class="status-pill" id="status-pill">
+      <span class="pulse-dot" id="status-dot"></span>
+      <span class="status-label" id="status-text">Connecting...</span>
     </div>
   </div>
 
-  <div class="main-body">
-    <div class="section-title">Current Tab Media Link</div>
-    <div class="current-url-box" id="current-url" title="Current tab URL">Detecting current link...</div>
+  <!-- Primary Action: Current Tab Media Sniffer -->
+  <div class="card active-card">
+    <div class="card-header">
+      <span class="card-icon">⚡</span>
+      <span class="card-title">Active Tab Media</span>
+    </div>
+    <div class="url-display" id="current-url" title="Current Page URL">Detecting active media...</div>
     <button class="btn btn-primary" id="btn-download-current">
-      <span class="btn-icon">🦜</span>
-      <span>Download Current Media</span>
+      <span class="btn-emoji">🐐</span>
+      <span>Download with Goat (16x Speed)</span>
     </button>
+  </div>
 
-    <div class="divider"><span>OR PASTE LINK</span></div>
-
-    <div class="input-group">
-      <input type="text" id="custom-url-input" placeholder="Paste YouTube, Instagram, Facebook link...">
-      <button class="btn btn-secondary" id="btn-download-custom">Send to Parrot</button>
+  <!-- Quick URL Input -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-icon">🔗</span>
+      <span class="card-title">Add Direct or Media Link</span>
+    </div>
+    <div class="input-row">
+      <input type="text" id="custom-url-input" placeholder="Paste .zip, .exe, .mp4, or video URL..." spellcheck="false" />
+      <button class="btn btn-secondary" id="btn-download-custom">Send</button>
     </div>
   </div>
 
-  <div class="footer">
-    <span>💡 Tip: Right-click any video or link and choose <b>Download with Parrot</b></span>
+  <!-- IDM Interception Settings Toggle -->
+  <div class="settings-card">
+    <div class="toggle-group">
+      <div class="toggle-info">
+        <span class="toggle-title">Catch Browser Downloads (IDM Mode)</span>
+        <span class="toggle-desc">Auto-intercepts .zip, .exe, .iso, .pdf, .mp4</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="toggle-interception" checked />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Footer Tip -->
+  <div class="gdm-footer">
+    <span>💡 <b>Tip:</b> Hover over videos or right-click any link to download instantly.</span>
   </div>
 
   <script src="popup.js"></script>

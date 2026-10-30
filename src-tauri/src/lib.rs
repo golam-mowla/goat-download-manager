@@ -209,7 +209,7 @@ async fn start_local_bridge(app_handle: AppHandle) {
     loop {
         if let Ok((mut stream, _)) = listener.accept().await {
             let handle = app_handle.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 use tokio::io::{AsyncReadExt, AsyncWriteExt};
                 let mut buf = [0u8; 4096];
                 if let Ok(n) = stream.read(&mut buf).await {
@@ -380,7 +380,7 @@ pub fn run() {
             register_windows_protocols();
 
             let handle = app.handle().clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 start_local_bridge(handle).await;
             });
 

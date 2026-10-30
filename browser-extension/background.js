@@ -50,6 +50,11 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     }
 
     if (INTERCEPT_EXTENSIONS.has(ext)) {
+      const storage = await chrome.storage.local.get(["interceptDownloads"]);
+      if (storage.interceptDownloads === false) {
+        return; // User disabled interception
+      }
+
       if (interceptedDownloadIds.has(downloadItem.id)) return;
       interceptedDownloadIds.add(downloadItem.id);
 

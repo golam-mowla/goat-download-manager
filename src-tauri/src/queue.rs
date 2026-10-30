@@ -134,7 +134,7 @@ pub fn process_queue(app: AppHandle, state: EngineState) {
     let app_handle = app.clone();
     let engine_state = state.clone();
 
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         const MAX_CONCURRENT: usize = 3;
 
         let mut tasks_guard = engine_state.tasks.write().await;
@@ -168,7 +168,7 @@ pub fn process_queue(app: AppHandle, state: EngineState) {
         for tid in queued_ids {
             let app_c = app_handle.clone();
             let state_c = engine_state.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let _ = downloader::execute_multithreaded_download(app_c.clone(), state_c.clone(), tid).await;
                 process_queue(app_c, state_c);
             });
