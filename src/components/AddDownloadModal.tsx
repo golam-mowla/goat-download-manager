@@ -218,6 +218,9 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       };
 
       setMediaInfo(info);
+      if (!customFilename && parsed.title) {
+        setCustomFilename(parsed.title);
+      }
       if (videoStreams.length > 0) setSelectedFormatId(videoStreams[0].id);
       if (audioStreams.length > 0) setSelectedAudioId(audioStreams[0].id);
     } catch (err: any) {
@@ -236,7 +239,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       await onAddMediaDownload({
         url: cleanUrl,
         saveFolder,
-        customFilename: customFilename.trim(),
+        customFilename: customFilename.trim() || mediaInfo?.title || "",
         videoStreamId: selectedFormatId || "best",
         audioStreamId: selectedAudioId || "best",
         container,

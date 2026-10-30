@@ -90,7 +90,9 @@ export const App: React.FC = () => {
   useEffect(() => {
     const handleProgress = (event: { payload: any }) => {
       const updated = event.payload;
-      if (!updated || !updated.id) return;
+      const id = updated?.id || updated?.taskId || updated?.task_id;
+      if (!updated || !id) return;
+      updated.id = id;
       setTasks((prev) => {
         const index = prev.findIndex((t) => t.id === updated.id);
         const now = new Date();
@@ -353,12 +355,34 @@ export const App: React.FC = () => {
       } catch {
         taskId = await invoke<string>("start_download", { options });
       }
-      const updated = await invoke<DownloadTask[]>("get_all_downloads");
-      setTasks(updated);
-      if (taskId) {
-        const created = updated.find((t) => t.id === taskId);
-        if (created) setActivePopupTask(created);
-      }
+
+      const isAudio =
+        options.downloadMode === "audio" ||
+        (options.container && String(options.container).toLowerCase().includes("audio"));
+
+      const newMediaTask: DownloadTask = {
+        id: taskId || `ytdlp-${Date.now()}`,
+        url: options.url,
+        filename: options.customFilename?.trim() || options.title?.trim() || "Online Media (yt-dlp)",
+        save_path: options.saveFolder || defaultDir || "Downloads",
+        total_bytes: 0,
+        downloaded_bytes: 0,
+        percent: 1.0,
+        speed_bps: 0,
+        speed_formatted: "Connecting...",
+        eta_formatted: "--",
+        status: "downloading",
+        category: isAudio ? "audio" : "video",
+        chunk_count: 1,
+        is_resumable: true,
+        chunks: [],
+        speedHistory: [],
+        errorMessage: undefined,
+        createdAt: new Date().toLocaleTimeString(),
+      };
+
+      setTasks((prev) => [newMediaTask, ...prev.filter((t) => t.id !== newMediaTask.id)]);
+      setActivePopupTask(newMediaTask);
     } catch (e) {
       console.error("Media download failed to start:", e);
     }

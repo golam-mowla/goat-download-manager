@@ -97,8 +97,10 @@ async fn start_http_download(
 async fn pause_http_download(
     app: AppHandle,
     state: State<'_, EngineState>,
+    download_state: State<'_, DownloadState>,
     task_id: String,
 ) -> Result<(), String> {
+    let _ = media::cancel_download(download_state, Some(task_id.clone())).await;
     queue::pause_download(app, state.inner().clone(), task_id).await
 }
 
@@ -115,8 +117,10 @@ async fn resume_http_download(
 async fn cancel_http_download(
     app: AppHandle,
     state: State<'_, EngineState>,
+    download_state: State<'_, DownloadState>,
     task_id: String,
 ) -> Result<(), String> {
+    let _ = media::cancel_download(download_state, Some(task_id.clone())).await;
     queue::cancel_download(app, state.inner().clone(), task_id).await
 }
 
@@ -124,9 +128,11 @@ async fn cancel_http_download(
 async fn remove_http_download(
     app: AppHandle,
     state: State<'_, EngineState>,
+    download_state: State<'_, DownloadState>,
     task_id: String,
     delete_file: Option<bool>,
 ) -> Result<(), String> {
+    let _ = media::cancel_download(download_state, Some(task_id.clone())).await;
     queue::remove_download(app, state.inner().clone(), task_id, delete_file.unwrap_or(false)).await
 }
 

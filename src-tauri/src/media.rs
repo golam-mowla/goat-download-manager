@@ -1167,19 +1167,36 @@ pub async fn start_download(
 
         let _ = app.emit(
             "download-progress",
-            ProgressPayload {
-                task_id: tid.clone(),
-                percent: 2.0,
-                text: "Initializing download stream...".to_string(),
-                speed: "".to_string(),
-                eta: "".to_string(),
-                status: "downloading".to_string(),
-            },
+            serde_json::json!({
+                "id": tid.clone(),
+                "percent": 2.0,
+                "text": "Initializing download stream...".to_string(),
+                "speed": "".to_string(),
+                "speed_formatted": "Connecting...".to_string(),
+                "eta": "".to_string(),
+                "eta_formatted": "--".to_string(),
+                "status": "downloading".to_string(),
+            }),
         );
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("Failed to start yt-dlp download process: {}", e))?;
+        let mut child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                let err_msg = format!("Failed to start yt-dlp download process: {}", e);
+                let _ = app.emit("download-error", serde_json::json!({ "id": tid.clone(), "error": err_msg }));
+                let _ = app.emit(
+                    "download-progress",
+                    serde_json::json!({
+                        "id": tid,
+                        "status": "error",
+                        "error_message": err_msg,
+                        "speed_formatted": "0 B/s",
+                        "eta_formatted": "--",
+                    }),
+                );
+                return;
+            }
+        };
 
         active_pids.lock().unwrap().insert(tid.clone(), child.id());
 
@@ -1224,14 +1241,16 @@ pub async fn start_download(
                             };
                             let _ = app_err.emit(
                                 "download-progress",
-                                ProgressPayload {
-                                    task_id: tid_err.clone(),
-                                    percent: pct,
-                                    text,
-                                    speed: speed.clone(),
-                                    eta: "".to_string(),
-                                    status: "downloading".to_string(),
-                                },
+                                serde_json::json!({
+                                    "id": tid_err.clone(),
+                                    "percent": pct,
+                                    "text": text,
+                                    "speed": speed.clone(),
+                                    "speed_formatted": speed.clone(),
+                                    "eta": "".to_string(),
+                                    "eta_formatted": "--".to_string(),
+                                    "status": "downloading".to_string(),
+                                }),
                             );
                         }
 
@@ -1283,14 +1302,16 @@ pub async fn start_download(
 
                     let _ = app.emit(
                         "download-progress",
-                        ProgressPayload {
-                            task_id: tid.clone(),
-                            percent: pct,
-                            text: after_tag.to_string(),
-                            speed,
-                            eta,
-                            status: "downloading".to_string(),
-                        },
+                        serde_json::json!({
+                            "id": tid.clone(),
+                            "percent": pct,
+                            "text": after_tag.to_string(),
+                            "speed": speed.clone(),
+                            "speed_formatted": speed.clone(),
+                            "eta": eta.clone(),
+                            "eta_formatted": eta.clone(),
+                            "status": "downloading".to_string(),
+                        }),
                     );
                 } else if trimmed.contains("time=") && (trimmed.contains("frame=") || trimmed.contains("size=")) {
                     if let Some((sec, speed)) = parse_ffmpeg_time_and_speed(trimmed) {
@@ -1316,27 +1337,31 @@ pub async fn start_download(
                         };
                         let _ = app.emit(
                             "download-progress",
-                            ProgressPayload {
-                                task_id: tid.clone(),
-                                percent: pct,
-                                text,
-                                speed: speed.clone(),
-                                eta: "".to_string(),
-                                status: "downloading".to_string(),
-                            },
+                            serde_json::json!({
+                                "id": tid.clone(),
+                                "percent": pct,
+                                "text": text,
+                                "speed": speed.clone(),
+                                "speed_formatted": speed.clone(),
+                                "eta": "".to_string(),
+                                "eta_formatted": "--".to_string(),
+                                "status": "downloading".to_string(),
+                            }),
                         );
                     }
                 } else if trimmed.contains("Downloading 1 time ranges") {
                     let _ = app.emit(
                         "download-progress",
-                        ProgressPayload {
-                            task_id: tid.clone(),
-                            percent: 5.0,
-                            text: format!("Extracting timeframe section: {}", trimmed),
-                            speed: "".to_string(),
-                            eta: "".to_string(),
-                            status: "downloading".to_string(),
-                        },
+                        serde_json::json!({
+                            "id": tid.clone(),
+                            "percent": 5.0,
+                            "text": format!("Extracting timeframe section: {}", trimmed),
+                            "speed": "".to_string(),
+                            "speed_formatted": "0 B/s".to_string(),
+                            "eta": "".to_string(),
+                            "eta_formatted": "--".to_string(),
+                            "status": "downloading".to_string(),
+                        }),
                     );
                 } else if trimmed.starts_with("[Merger]")
                     || trimmed.starts_with("[ExtractAudio]")
@@ -1345,51 +1370,83 @@ pub async fn start_download(
                 {
                     let _ = app.emit(
                         "download-progress",
-                        ProgressPayload {
-                            task_id: tid.clone(),
-                            percent: 99.0,
-                            text: format!("Post-processing: {}", trimmed),
-                            speed: "".to_string(),
-                            eta: "00:00".to_string(),
-                            status: "processing".to_string(),
-                        },
+                        serde_json::json!({
+                            "id": tid.clone(),
+                            "percent": 99.0,
+                            "text": format!("Post-processing: {}", trimmed),
+                            "speed": "".to_string(),
+                            "speed_formatted": "Finishing...".to_string(),
+                            "eta": "00:00".to_string(),
+                            "eta_formatted": "0s".to_string(),
+                            "status": "assembling".to_string(),
+                        }),
                     );
                 }
             }
         }
 
-        let status = child
-            .wait()
-            .map_err(|e| format!("Process wait failed: {}", e))?;
+        let status = child.wait();
         active_pids.lock().unwrap().remove(&tid);
 
         let was_cancelled = cancelled_tasks.lock().unwrap().remove(&tid).unwrap_or(false);
         if was_cancelled {
-            return Err("Download paused / cancelled by user.".to_string());
+            let _ = app.emit(
+                "download-progress",
+                serde_json::json!({
+                    "id": tid.clone(),
+                    "status": "paused",
+                    "speed": "0 B/s",
+                    "speed_formatted": "0 B/s",
+                    "eta": "--",
+                    "eta_formatted": "--"
+                }),
+            );
+            return;
         }
 
-        if !status.success() {
+        if !status.as_ref().map(|s| s.success()).unwrap_or(false) {
             let errs = err_lines.lock().unwrap();
             let last_err = errs.last().cloned().unwrap_or_else(|| "Unknown yt-dlp error".to_string());
-            return Err(last_err);
+            let _ = app.emit("download-error", serde_json::json!({ "id": tid.clone(), "error": last_err }));
+            let _ = app.emit(
+                "download-progress",
+                serde_json::json!({
+                    "id": tid.clone(),
+                    "status": "error",
+                    "error_message": last_err,
+                    "speed": "0 B/s",
+                    "speed_formatted": "0 B/s",
+                    "eta": "--",
+                    "eta_formatted": "--"
+                }),
+            );
+            return;
         }
 
         let _ = app.emit(
             "download-progress",
-            ProgressPayload {
-                task_id: tid.clone(),
-                percent: 100.0,
-                text: "Download Completed Successfully! ✔".to_string(),
-                speed: "".to_string(),
-                eta: "00:00".to_string(),
-                status: "completed".to_string(),
-            },
+            serde_json::json!({
+                "id": tid.clone(),
+                "percent": 100.0,
+                "text": "Download Completed Successfully! ✔".to_string(),
+                "speed": "Done".to_string(),
+                "speed_formatted": "Done".to_string(),
+                "eta": "00:00".to_string(),
+                "eta_formatted": "0s".to_string(),
+                "status": "completed".to_string(),
+            }),
         );
+        let _ = app.emit(
+            "download-complete",
+            serde_json::json!({
+                "id": tid.clone(),
+                "percent": 100.0,
+                "status": "completed"
+            }),
+        );
+    });
 
-        Ok("Completed".to_string())
-    })
-    .await
-    .map_err(|e| format!("Join error: {}", e))?
+    Ok(task_id)
 }
 
 // ---------------------------------------------------------------------------
