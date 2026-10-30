@@ -253,10 +253,11 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename) {
   return { success: true, method: "protocol" };
 }
 
-// Listen to messages from popup
+// Listen to messages from popup or content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "SEND_TO_PARROT" || request.action === "SEND_TO_GDM") {
-    sendUrlToGdm(request.url, null).then((res) => sendResponse(res));
+    const tabId = sender && sender.tab ? sender.tab.id : null;
+    sendUrlToGdm(request.url, tabId, request.filename).then((res) => sendResponse(res));
     return true;
   }
 

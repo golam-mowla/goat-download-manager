@@ -103,11 +103,22 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       !isDirectFile &&
       (lower.includes("youtube.com") ||
         lower.includes("youtu.be") ||
+        lower.includes("kick.com") ||
+        lower.includes("twitch.tv") ||
         lower.includes("instagram.com") ||
         lower.includes("facebook.com") ||
         lower.includes("tiktok.com") ||
         lower.includes("twitter.com") ||
-        lower.includes("x.com"))
+        lower.includes("x.com") ||
+        lower.includes("vimeo.com") ||
+        lower.includes("reddit.com") ||
+        lower.includes("dailymotion.com") ||
+        lower.includes("bilibili.com") ||
+        lower.includes("m3u8") ||
+        lower.includes("/watch") ||
+        lower.includes("/video") ||
+        lower.includes("/reel") ||
+        !lower.includes("."))
     ) {
       setTab("media");
     } else {
