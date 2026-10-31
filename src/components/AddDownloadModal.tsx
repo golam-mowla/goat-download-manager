@@ -9,6 +9,8 @@ import {
   Scissors,
   Loader2,
   Clipboard,
+  Radio,
+  FileCode,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -26,6 +28,11 @@ interface AddDownloadModalProps {
     connections: number
   ) => Promise<void>;
   onAddMediaDownload: (options: any) => Promise<void>;
+  onAddTorrentDownload?: (
+    urlOrPath: string,
+    savePath: string,
+    sequential: boolean
+  ) => Promise<void>;
   theme?: "dark" | "light";
 }
 
@@ -36,10 +43,11 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   defaultFilename = "",
   onAddDirectDownload,
   onAddMediaDownload,
+  onAddTorrentDownload,
 }) => {
-  const [tab, setTab] = useState<"direct" | "media">("direct");
+  const [tab, setTab] = useState<"direct" | "media" | "torrent">("direct");
 
-  // Direct Download State
+  // Direct & General State
   const [url, setUrl] = useState(defaultUrl);
   const [customFilename, setCustomFilename] = useState(defaultFilename);
   const [saveFolder, setSaveFolder] = useState("");
@@ -57,6 +65,9 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   const [startTime, setStartTime] = useState("00:00:00");
   const [endTime, setEndTime] = useState("00:00:10");
 
+  // Torrent State
+  const [sequential, setSequential] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
       const cleanUrl = typeof defaultUrl === "string" ? defaultUrl.trim() : (defaultUrl as any)?.url || "";
@@ -67,6 +78,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       setSelectedAudioId("");
       setErrorMessage(null);
       setSubmitting(false);
+      setSequential(false);
       if (cleanUrl) {
         handleUrlDetection(cleanUrl);
       }
@@ -85,6 +97,12 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
 
   const handleUrlDetection = (inputUrl: string) => {
     const lower = inputUrl.toLowerCase().trim();
+
+    if (lower.startsWith("magnet:") || lower.endsWith(".torrent")) {
+      setTab("torrent");
+      return;
+    }
+
     const isDirectFile =
       lower.endsWith(".mkv") ||
       lower.endsWith(".mp4") ||
@@ -130,10 +148,10 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   useEffect(() => {
     const fetchDefaultDir = async () => {
       try {
-        const homeDir = await invoke<string>("get_default_download_dir");
-        if (homeDir) setSaveFolder(homeDir);
-      } catch {
-        setSaveFolder("C:\\Users\\GM desktop\\Downloads");
+        const dir = await invoke<string>("get_default_download_dir");
+        if (dir) setSaveFolder(dir);
+      } catch (err) {
+        setSaveFolder("D:\\Downloads");
       }
     };
     fetchDefaultDir();
@@ -149,7 +167,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
         handleUrlChange(clean);
       }
     } catch (e) {
-      console.warn("Clipboard access error:", e);
+      console.error("Paste clipboard error:", e);
     }
   };
 
@@ -164,17 +182,28 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
         setSaveFolder(selected);
       }
     } catch (err) {
-      console.error("Folder select error:", err);
+      console.error("Failed to select folder:", err);
     }
   };
 
-  const handleDirectSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanUrl = url.trim();
-    if (!cleanUrl) {
-      setErrorMessage("Please enter a valid URL");
-      return;
+  const handleBrowseTorrentFile = async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "Torrent Files (*.torrent)", extensions: ["torrent"] }],
+      });
+      if (selected && typeof selected === "string") {
+        setUrl(selected);
+        setTab("torrent");
+      }
+    } catch (e) {
+      console.error("Browse torrent file error:", e);
     }
+  };
+
+  const handleDirectSubmit = async () => {
+    const cleanUrl = url.trim();
+    if (!cleanUrl) return;
 
     try {
       setSubmitting(true);
@@ -182,7 +211,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       await onAddDirectDownload(cleanUrl, saveFolder, customFilename.trim(), connections);
       onClose();
     } catch (err: any) {
-      setErrorMessage(err?.toString() || "Failed to start download");
+      setErrorMessage(err?.message || err?.toString() || "Failed to start direct download");
     } finally {
       setSubmitting(false);
     }
@@ -226,8 +255,21 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
         ext: f.ext || "m4a",
       }));
 
+      let titleToUse = parsed.title || "";
+      if (
+        titleToUse.toLowerCase() === "master" ||
+        titleToUse.toLowerCase() === "playlist" ||
+        titleToUse.toLowerCase() === "index"
+      ) {
+        if (cleanUrl.includes("kick.com")) {
+          titleToUse = "Kick Stream / VOD";
+        } else {
+          titleToUse = "";
+        }
+      }
+
       const info: MediaInfo = {
-        title: parsed.title || "Online Media",
+        title: titleToUse || "Online Media",
         uploader: parsed.uploader || "",
         duration: parsed.duration || 0,
         thumbnail: parsed.thumbnail || "",
@@ -237,9 +279,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       };
 
       setMediaInfo(info);
-      if (parsed.title) {
-        setCustomFilename(parsed.title);
-      }
+      setCustomFilename(titleToUse);
       if (videoStreams.length > 0) setSelectedFormatId(videoStreams[0].id);
       if (audioStreams.length > 0) setSelectedAudioId(audioStreams[0].id);
     } catch (err: any) {
@@ -263,20 +303,46 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
         audioStreamId: selectedAudioId || "best",
         container,
         enableClip,
-        startTime,
-        endTime,
+        startTime: enableClip ? startTime : undefined,
+        endTime: enableClip ? endTime : undefined,
       });
       onClose();
     } catch (err: any) {
-      setErrorMessage(err?.toString() || "Failed to start media download");
+      setErrorMessage(err?.message || err?.toString() || "Failed to start media download");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleTorrentSubmit = async () => {
+    const cleanUrl = url.trim();
+    if (!cleanUrl) return;
+    try {
+      setSubmitting(true);
+      setErrorMessage(null);
+      if (onAddTorrentDownload) {
+        await onAddTorrentDownload(cleanUrl, saveFolder, sequential);
+      } else {
+        await invoke("add_torrent", {
+          request: {
+            source: cleanUrl,
+            saveFolder: saveFolder || null,
+            paused: false,
+            sequential,
+          },
+        });
+      }
+      onClose();
+    } catch (err: any) {
+      setErrorMessage("Failed to start torrent: " + (err?.message || err?.toString() || "Unknown error"));
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 select-none">
-      <div className="w-full max-w-xl rounded-xl border border-gdm bg-gdm-surface shadow-2xl overflow-hidden transition-colors">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+      <div className="w-full max-w-xl rounded-xl border border-gdm bg-gdm-surface shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 transition-colors">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-gdm bg-gdm-tableHead transition-colors">
           <div className="flex items-center space-x-2.5">
@@ -288,7 +354,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                 Add New Download
               </h2>
               <p className="text-[12px] text-gdm-secondary">
-                Segmented HTTP Engine & Media Extractor
+                Segmented HTTP Engine, Media Extractor & BitTorrent
               </p>
             </div>
           </div>
@@ -302,7 +368,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
         </div>
 
         {/* Tab Selection */}
-        <div className="flex border-b border-gdm bg-gdm-surface px-5 pt-2.5 space-x-6 transition-colors">
+        <div className="flex border-b border-gdm bg-gdm-surface px-5 pt-2.5 space-x-5 transition-colors">
           <button
             onClick={() => setTab("direct")}
             className={`pb-2.5 text-[13px] font-semibold flex items-center space-x-2 border-b-2 transition-all ${
@@ -312,7 +378,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
             }`}
           >
             <Zap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <span>Direct File (IDM Segmented)</span>
+            <span>Direct File (IDM Turbo)</span>
           </button>
           <button
             onClick={() => setTab("media")}
@@ -323,7 +389,18 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
             }`}
           >
             <Film className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-            <span>Video & Social Media (yt-dlp)</span>
+            <span>Social & Video (yt-dlp)</span>
+          </button>
+          <button
+            onClick={() => setTab("torrent")}
+            className={`pb-2.5 text-[13px] font-semibold flex items-center space-x-2 border-b-2 transition-all ${
+              tab === "torrent"
+                ? "border-orange-500 text-orange-500"
+                : "border-transparent text-gdm-secondary hover:text-gdm-primary"
+            }`}
+          >
+            <Radio className="w-4 h-4 text-orange-500" />
+            <span>BitTorrent (Magnet / .torrent)</span>
           </button>
         </div>
 
@@ -336,20 +413,32 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
             </div>
           )}
 
-          {/* URL Input with Paste Button */}
+          {/* URL / Path Input with Actions */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-[13px] font-medium text-gdm-secondary">
-                Target Download URL
+                {tab === "torrent" ? "Magnet Link or .torrent File Path" : "Target Download URL"}
               </label>
-              <button
-                type="button"
-                onClick={handlePasteClipboard}
-                className="text-[12px] font-semibold text-gdm-accent hover:underline flex items-center space-x-1"
-              >
-                <Clipboard className="w-3.5 h-3.5" />
-                <span>Paste from Clipboard</span>
-              </button>
+              <div className="flex items-center space-x-3">
+                {tab === "torrent" && (
+                  <button
+                    type="button"
+                    onClick={handleBrowseTorrentFile}
+                    className="text-[12px] font-semibold text-orange-500 hover:underline flex items-center space-x-1"
+                  >
+                    <FileCode className="w-3.5 h-3.5" />
+                    <span>Browse .torrent</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handlePasteClipboard}
+                  className="text-[12px] font-semibold text-gdm-accent hover:underline flex items-center space-x-1"
+                >
+                  <Clipboard className="w-3.5 h-3.5" />
+                  <span>Paste from Clipboard</span>
+                </button>
+              </div>
             </div>
             <div className="flex space-x-2">
               <input
@@ -359,7 +448,9 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                 placeholder={
                   tab === "direct"
                     ? "Paste direct link (.zip, .exe, .mkv, .iso, .pdf)..."
-                    : "Paste YouTube, Facebook, Instagram, or TikTok link..."
+                    : tab === "torrent"
+                    ? "Paste magnet:?xt=urn:btih:... or click Browse .torrent"
+                    : "Paste YouTube, Kick, Facebook, Instagram, or TikTok link..."
                 }
                 className="flex-1 px-3 py-2 rounded-lg text-[13px] font-mono border border-gdm bg-gdm-surface text-gdm-primary placeholder:text-gdm-muted focus:border-gdm-accent focus:outline-hidden transition-colors"
                 autoFocus
@@ -405,19 +496,21 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
             </div>
           </div>
 
-          {/* Custom Filename */}
-          <div className="space-y-1.5">
-            <label className="text-[13px] font-medium text-gdm-secondary">
-              Custom Filename <span className="text-gdm-muted font-normal">(Optional)</span>
-            </label>
-            <input
-              type="text"
-              value={customFilename}
-              onChange={(e) => setCustomFilename(e.target.value)}
-              placeholder="Leave empty to use server original name"
-              className="w-full px-3 py-2 rounded-lg text-[14px] font-semibold border border-gdm bg-gdm-surface text-gdm-primary placeholder:text-gdm-muted placeholder:font-normal focus:border-gdm-accent focus:outline-hidden transition-colors"
-            />
-          </div>
+          {/* Custom Filename (for Direct & Media) */}
+          {tab !== "torrent" && (
+            <div className="space-y-1.5">
+              <label className="text-[13px] font-medium text-gdm-secondary">
+                Custom Filename <span className="text-gdm-muted font-normal">(Optional)</span>
+              </label>
+              <input
+                type="text"
+                value={customFilename}
+                onChange={(e) => setCustomFilename(e.target.value)}
+                placeholder="Leave empty to use server original name"
+                className="w-full px-3 py-2 rounded-lg text-[14px] font-semibold border border-gdm bg-gdm-surface text-gdm-primary placeholder:text-gdm-muted placeholder:font-normal focus:border-gdm-accent focus:outline-hidden transition-colors"
+              />
+            </div>
+          )}
 
           {/* Direct Mode Specifics: Simultaneous Segments */}
           {tab === "direct" && (
@@ -449,6 +542,36 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
               <p className="text-[12px] text-gdm-muted">
                 Splits file into concurrent HTTP Range slices for maximum bandwidth saturation.
               </p>
+            </div>
+          )}
+
+          {/* Torrent Mode Specifics */}
+          {tab === "torrent" && (
+            <div className="space-y-3 pt-2 border-t border-gdm">
+              <div className="p-3 rounded-lg border border-gdm bg-orange-500/5 dark:bg-orange-500/10 space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Radio className="w-4 h-4 text-orange-500" />
+                  <span className="font-semibold text-[13.5px] text-gdm-primary">
+                    BitTorrent Swarm Engine
+                  </span>
+                </div>
+                <p className="text-[12px] text-gdm-secondary">
+                  Connects to Mainline DHT, Peer Exchange (PEX), and UDP trackers to download multi-file torrents.
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="seq-torrent"
+                  checked={sequential}
+                  onChange={(e) => setSequential(e.target.checked)}
+                  className="rounded border-gdm text-orange-500 focus:ring-orange-500"
+                />
+                <label htmlFor="seq-torrent" className="text-[13px] font-medium text-gdm-primary cursor-pointer">
+                  Sequential download (prioritize first and last pieces for media preview)
+                </label>
+              </div>
             </div>
           )}
 
@@ -485,10 +608,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                     className="w-full px-3 py-2 rounded-lg text-[13px] font-semibold border border-gdm bg-gdm-surface text-gdm-primary focus:border-gdm-accent focus:outline-hidden transition-colors"
                   >
                     {mediaInfo.videoStreams.map((s) => (
-                      <option
-                        key={s.id}
-                        value={s.id}
-                      >
+                      <option key={s.id} value={s.id}>
                         {s.label}
                       </option>
                     ))}
@@ -519,13 +639,14 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setEnableClip(!enableClip)}
-                  className="flex items-center space-x-2 text-[13px] font-semibold text-gdm-accent hover:underline"
+                  className="flex items-center space-x-1.5 text-[12.5px] font-semibold text-gdm-accent hover:underline"
                 >
                   <Scissors className="w-3.5 h-3.5" />
                   <span>{enableClip ? "Disable Timeframe Clipper" : "Enable Timeframe Clipper"}</span>
                 </button>
+
                 {enableClip && (
-                  <div className="grid grid-cols-2 gap-3 mt-2">
+                  <div className="grid grid-cols-2 gap-3 mt-2 p-3 rounded-lg border border-gdm bg-slate-50 dark:bg-slate-900/40">
                     <div>
                       <span className="text-[12px] font-medium text-gdm-secondary">
                         Start (HH:MM:SS)
@@ -578,6 +699,20 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                 <Download className="w-4 h-4" />
               )}
               <span>Start High-Speed Download</span>
+            </button>
+          ) : tab === "torrent" ? (
+            <button
+              type="button"
+              onClick={handleTorrentSubmit}
+              disabled={submitting || !url.trim()}
+              className="flex items-center space-x-2 px-5 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white font-semibold text-[13px] shadow-xs transition-colors disabled:opacity-60"
+            >
+              {submitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Radio className="w-4 h-4" />
+              )}
+              <span>Start Torrent Download</span>
             </button>
           ) : (
             <button

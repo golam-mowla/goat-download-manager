@@ -6,6 +6,7 @@ import {
   FileText,
   Archive,
   Binary,
+  Radio,
   Settings,
   Sparkles,
   CheckCircle2,
@@ -14,7 +15,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-export type CategoryType = "all" | "video" | "audio" | "docs" | "compressed" | "programs";
+export type CategoryType = "all" | "video" | "audio" | "docs" | "compressed" | "programs" | "torrents";
 export type StatusFilterType = "all" | "downloading" | "completed" | "paused" | "error";
 
 interface SidebarProps {
@@ -46,6 +47,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const categories: { id: CategoryType; label: string; icon: React.ReactNode }[] = [
     { id: "all", label: "All Downloads", icon: <Layers className="w-[18px] h-[18px] text-blue-500 flex-shrink-0" /> },
+    { id: "torrents", label: "Torrents", icon: <Radio className="w-[18px] h-[18px] text-orange-500 flex-shrink-0" /> },
     { id: "compressed", label: "Compressed", icon: <Archive className="w-[18px] h-[18px] text-amber-500 flex-shrink-0" /> },
     { id: "docs", label: "Documents", icon: <FileText className="w-[18px] h-[18px] text-emerald-500 flex-shrink-0" /> },
     { id: "audio", label: "Music & Audio", icon: <Music className="w-[18px] h-[18px] text-pink-500 flex-shrink-0" /> },

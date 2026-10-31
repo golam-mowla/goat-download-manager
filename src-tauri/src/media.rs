@@ -1856,52 +1856,40 @@ pub async fn update_tool(tool_name: String) -> Result<String, String> {
 #[command]
 pub async fn open_file(path: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
-    if !p.exists() {
-        if let Some(parent) = p.parent() {
-            if let Some(file_stem) = p.file_stem().and_then(|s| s.to_str()) {
-                if let Ok(entries) = fs::read_dir(parent) {
-                    for entry in entries.flatten() {
-                        let ep = entry.path();
-                        if ep.is_file() {
-                            if let Some(stem) = ep.file_stem().and_then(|s| s.to_str()) {
-                                if stem == file_stem || stem.starts_with(file_stem) {
-                                    return launch_file(&ep.to_string_lossy());
-                                }
+    if p.exists() && p.is_file() {
+        return launch_file(&path);
+    }
+
+    // Try appending common media/document extensions if missing
+    for ext in &["mp4", "mkv", "webm", "mp3", "m4a", "ts", "zip", "exe", "pdf"] {
+        let candidate = PathBuf::from(format!("{}.{}", path, ext));
+        if candidate.exists() && candidate.is_file() {
+            return launch_file(&candidate.to_string_lossy());
+        }
+    }
+
+    // Check parent directory for matching file stem
+    if let Some(parent) = p.parent() {
+        if let Some(file_stem) = p.file_stem().and_then(|s| s.to_str()) {
+            if let Ok(entries) = fs::read_dir(parent) {
+                for entry in entries.flatten() {
+                    let ep = entry.path();
+                    if ep.is_file() {
+                        if let Some(stem) = ep.file_stem().and_then(|s| s.to_str()) {
+                            if stem == file_stem || stem.starts_with(file_stem) {
+                                return launch_file(&ep.to_string_lossy());
                             }
                         }
                     }
                 }
             }
         }
-        return Err(format!("File does not exist: {}", path));
     }
-    launch_file(&path)
+    Err(format!("File does not exist: {}", path))
 }
 
 fn launch_file(file_path: &str) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("cmd")
-            .args(["/c", "start", "", file_path])
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|e| format!("Failed to open file: {}", e))?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg(file_path)
-            .spawn()
-            .map_err(|e| format!("Failed to open file: {}", e))?;
-    }
-    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    {
-        Command::new("xdg-open")
-            .arg(file_path)
-            .spawn()
-            .map_err(|e| format!("Failed to open file: {}", e))?;
-    }
-    Ok(())
+    open::that(file_path).map_err(|e| format!("Failed to open file: {}", e))
 }
 
 #[command]

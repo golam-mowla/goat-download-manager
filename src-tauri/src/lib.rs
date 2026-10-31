@@ -1,6 +1,7 @@
 pub mod downloader;
 pub mod media;
 pub mod queue;
+pub mod torrent;
 
 use downloader::{DownloadTask, EngineState, UrlMetadata};
 use media::{AppUrlState, DownloadState};
@@ -414,7 +415,7 @@ pub fn run() {
                     pending_arg_url = Some(decode_percent_encoded(&without_proto[pos + 5..]));
                     break;
                 }
-            } else if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+            } else if trimmed.starts_with("magnet:") || trimmed.ends_with(".torrent") || trimmed.starts_with("http://") || trimmed.starts_with("https://") {
                 pending_arg_req = Some(format!("open?url={}", trimmed));
                 pending_arg_url = Some(trimmed.to_string());
                 break;
@@ -449,6 +450,7 @@ pub fn run() {
             pending_url: Arc::new(Mutex::new(pending_arg_url)),
         })
         .manage(EngineState::new())
+        .manage(torrent::TorrentState::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -537,7 +539,15 @@ pub fn run() {
             media::install_app_update,
             get_pending_url,
             ytdlp_get_info,
-            ytdlp_download
+            ytdlp_download,
+            // BitTorrent Engine Commands (librqbit)
+            torrent::add_torrent,
+            torrent::get_torrent_details,
+            torrent::pause_torrent,
+            torrent::resume_torrent,
+            torrent::remove_torrent,
+            torrent::get_torrent_peers,
+            torrent::get_torrent_pieces
         ])
         .run(tauri::generate_context!())
         .expect("error while running Goat Download Manager");

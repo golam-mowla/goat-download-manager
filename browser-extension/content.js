@@ -124,11 +124,14 @@
           document.querySelector("article:hover, div[role='dialog']:hover");
       }
 
+      const vid =
+        (element?.tagName === "VIDEO" ? element : element?.querySelector?.("video")) ||
+        currentTargetVideo;
+
       let postUrl = window.location.href;
       let postTitle = "";
 
       if (postArticle) {
-        // Find permalink
         const postLink = postArticle.querySelector(
           "a[href*='/p/'], a[href*='/reel/']"
         );
@@ -136,41 +139,57 @@
           postUrl = postLink.href;
         }
 
-        // 1. Author Name
         let author = "";
         const authorEl = postArticle.querySelector("header a, header h2, a[role='link']");
         if (authorEl && authorEl.innerText) {
           author = authorEl.innerText.trim();
         }
 
-        // 2. Reel Caption / Title (Crucial: DO NOT pick the author name in header!)
-        const headerEl = postArticle.querySelector("header");
+        const isLikelyCaption = (txt) => {
+          if (!txt || typeof txt !== "string") return false;
+          const clean = txt
+            .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, " ")
+            .replace(/^[•·\s\-_–—|*#]+/, "")
+            .replace(/[•·\s\-_–—|*#]+$/, "")
+            .trim();
+          if (clean.length < 2) return false;
+          // Strictly reject timestamps: 48m, 1h, 2d, 3w, 48 mins ago, etc.
+          if (/^\d+\s*([smhdwy]|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|y|yr|yrs|year|years)(\s+ago)?$/i.test(clean)) return false;
+          if (/^\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(clean)) return false;
+          if (/^(just now|yesterday|\d+\s*m|\d+\s*h|\d+\s*d|\d+\s*w)$/i.test(clean)) return false;
+          if (/^(\d+([.,]\d+)?[KMB]?|\d+)\s*(likes?|views?|comments?|shares?)?$/i.test(clean)) return false;
+          if (/^(see\s*translation|view\s*more|more|\.{3}|original\s*audio|follow|following|suggested\s*for\s*you)$/i.test(clean)) return false;
+          if (author && clean.toLowerCase() === author.toLowerCase()) return false;
+          return true;
+        };
 
-        // Try Instagram's primary caption selectors outside header
-        const explicitCaption = postArticle.querySelector("h1, div._a9zs, span._aade");
-        if (explicitCaption && (!headerEl || !headerEl.contains(explicitCaption))) {
-          const t = explicitCaption.innerText?.trim();
-          if (t && t.length > 2 && (!author || !author.includes(t))) {
-            postTitle = t;
+        // Instagram caption containers (always situated AFTER the video in the feed)
+        const captionNodes = postArticle.querySelectorAll("h1, div._a9zs, span._aade, span._aaco, span[dir='auto']");
+        for (const node of captionNodes) {
+          // Skip if this node is positioned BEFORE the video (meaning header, timestamp, or username)
+          if (vid && (node.compareDocumentPosition(vid) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+            continue;
           }
-        }
-
-        if (!postTitle) {
-          // Scan spans that have dir="auto" or _ap3a but NOT inside header, NOT audio links, NOT buttons
-          const candidateSpans = postArticle.querySelectorAll("span[dir='auto'], span._ap3a");
-          for (const sp of candidateSpans) {
-            if (headerEl && headerEl.contains(sp)) continue;
-            if (sp.closest("a[href*='/audio/'], a[href*='/music/'], button, header")) continue;
-            const txt = sp.innerText?.trim();
-            if (txt && txt.length > 2 && (!author || !author.includes(txt))) {
-              postTitle = txt;
+          if (node.closest("time, a[href*='/audio/'], a[href*='/music/'], button, header")) continue;
+          const t = node.innerText?.trim();
+          if (isLikelyCaption(t)) {
+            let cText = t
+              .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, " ")
+              .replace(/^[•·\s\-_–—|*#]+/, "")
+              .replace(/[•·\s\-_–—|*#]+$/, "")
+              .trim();
+            if (author && cText.toLowerCase().startsWith(author.toLowerCase())) {
+              cText = cText.slice(author.length).trim();
+            }
+            if (isLikelyCaption(cText)) {
+              postTitle = cText;
               break;
             }
           }
         }
 
         if (!postTitle && author) {
-          postTitle = `Instagram Reel by ${author}`;
+          postTitle = `${author} - Instagram Video`;
         }
       }
 
@@ -179,8 +198,8 @@
           .replace(/\s*\.\.\.\s*more$/i, "")
           .replace(/[\r\n\t]+/g, " ")
           .trim();
-        if (postTitle.length > 65) {
-          postTitle = postTitle.slice(0, 65).trim() + "...";
+        if (postTitle.length > 70) {
+          postTitle = postTitle.slice(0, 70).trim() + "...";
         }
       }
 
@@ -192,9 +211,6 @@
             .trim() || "Instagram Video";
       }
 
-      const vid =
-        (element?.tagName === "VIDEO" ? element : element?.querySelector?.("video")) ||
-        currentTargetVideo;
       if (vid && vid.currentSrc && isValidDownloadUrl(vid.currentSrc)) {
         return {
           url: stripRangeParams(vid.currentSrc),
@@ -212,7 +228,31 @@
       };
     }
 
-    // 3. Popular Social & Video platforms natively supported by yt-dlp
+    // 2.5 Kick.com (Streams & VODs)
+    if (hostname.includes("kick.com")) {
+      let kickTitle = "";
+      const titleEl = document.querySelector(".stream-title, h1, h2, span[title]");
+      if (titleEl && titleEl.innerText) {
+        kickTitle = titleEl.innerText.trim();
+      }
+      if (!kickTitle) {
+        kickTitle = document.title
+          .replace(/ - Kick$/, "")
+          .replace(/ \| Kick$/, "")
+          .replace(/ - Watch Live on Kick$/, "")
+          .trim();
+      }
+      const vid =
+        (element?.tagName === "VIDEO" ? element : element?.querySelector?.("video")) ||
+        currentTargetVideo;
+      return {
+        url: window.location.href,
+        title: kickTitle || "Kick Video",
+        videoEl: vid,
+      };
+    }
+
+        // 3. Popular Social & Video platforms natively supported by yt-dlp
     if (
       hostname.includes("kick.com") ||
       hostname.includes("twitch.tv") ||
@@ -387,8 +427,20 @@
           { label: `${cleanTitle} - MP3 Audio`, quality: "Audio", url: targetVideoSrc || window.location.href }
         );
       }
+    } else if (hostname.includes("kick.com")) {
+      // 3. Kick.com (VODs & Live Streams) - Authentic IDM quality list
+      const cleanTitle = title.length > 40 ? title.slice(0, 40) + "..." : title;
+      const kickUrl = window.location.href;
+      options.push(
+        { label: `${cleanTitle}, TS/MP4 file, quality 1080p60 HD`, quality: "1080p HD", url: kickUrl },
+        { label: `${cleanTitle}, TS/MP4 file, quality 720p60 HD`, quality: "720p HD", url: kickUrl },
+        { label: `${cleanTitle}, TS/MP4 file, quality 480p`, quality: "480p", url: kickUrl },
+        { label: `${cleanTitle}, TS/MP4 file, quality 360p`, quality: "360p", url: kickUrl },
+        { label: `${cleanTitle}, TS/MP4 file, quality 160p`, quality: "160p", url: kickUrl },
+        { label: `${cleanTitle}, Original Audio Only`, quality: "Audio", url: kickUrl }
+      );
     } else {
-      // 3. Any other website
+      // 4. Any other website
       const cleanTitle = title.length > 40 ? title.slice(0, 40) + "..." : title;
 
       const validStreams = sniffedStreams

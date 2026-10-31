@@ -17,6 +17,7 @@ import { DownloadItemCard } from "./components/DownloadItemCard";
 import { AddDownloadModal } from "./components/AddDownloadModal";
 import { PreferencesModal } from "./components/PreferencesModal";
 import { IdmDownloadDialog } from "./components/IdmDownloadDialog";
+import { TorrentDetailsDrawer } from "./components/TorrentDetailsDrawer";
 import { DownloadTask } from "./types";
 
 function cleanDownloadUrl(url: string): string {
@@ -43,6 +44,7 @@ export const App: React.FC = () => {
   // State
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedTorrentId, setSelectedTorrentId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>("all");
   const [selectedStatus, setSelectedStatus] = useState<StatusFilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -368,11 +370,25 @@ export const App: React.FC = () => {
     );
   };
 
+  const isTorrentTask = (task?: DownloadTask, id?: string) => {
+    if (task?.category === "torrents") return true;
+    const targetId = id || task?.id || "";
+    if (targetId.startsWith("torrent-") || targetId.startsWith("bt-") || targetId.length === 40) return true;
+    const u = (task?.url || "").toLowerCase();
+    return u.startsWith("magnet:") || u.endsWith(".torrent");
+  };
+
   // IDM Action Handlers
   const handlePause = async (id: string) => {
     try {
       const task = tasks.find((t) => t.id === id);
-      if (isMediaTask(task, id)) {
+      if (task && isTorrentTask(task, id)) {
+        try {
+          await invoke("pause_torrent", { idOrHash: task.id });
+        } catch (e) {
+          console.warn("pause_torrent error:", e);
+        }
+      } else if (isMediaTask(task, id)) {
         try {
           await invoke("cancel_download", { taskId: id });
         } catch (e) {
@@ -404,7 +420,13 @@ export const App: React.FC = () => {
         )
       );
 
-      if (task && isMediaTask(task, id)) {
+      if (task && isTorrentTask(task, id)) {
+        try {
+          await invoke("resume_torrent", { idOrHash: task.id });
+        } catch (e) {
+          console.warn("resume_torrent error:", e);
+        }
+      } else if (task && isMediaTask(task, id)) {
         // Resume media task via start_download with existing task ID and file path
         try {
           await invoke("start_download", {
@@ -451,7 +473,11 @@ export const App: React.FC = () => {
   const handleCancel = async (id: string) => {
     try {
       const task = tasks.find((t) => t.id === id);
-      if (isMediaTask(task, id)) {
+      if (task && isTorrentTask(task, id)) {
+        try {
+          await invoke("pause_torrent", { idOrHash: task.id });
+        } catch {}
+      } else if (isMediaTask(task, id)) {
         try {
           await invoke("cancel_download", { taskId: id });
         } catch {}
@@ -470,9 +496,19 @@ export const App: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      await invoke("remove_http_download", { taskId: id, deleteFile: false });
+      const task = tasks.find((t) => t.id === id);
+      if (task && isTorrentTask(task, id)) {
+        try {
+          await invoke("remove_torrent", { idOrHash: task.id, deleteFiles: false });
+        } catch (e) {
+          console.warn("remove_torrent error:", e);
+        }
+      } else {
+        await invoke("remove_http_download", { taskId: id, deleteFile: false });
+      }
       setTasks((prev) => prev.filter((t) => t.id !== id));
       if (selectedTaskId === id) setSelectedTaskId(null);
+      if (selectedTorrentId === id) setSelectedTorrentId(null);
     } catch (err) {
       console.error("Delete failed:", err);
     }
@@ -571,10 +607,15 @@ export const App: React.FC = () => {
         options.downloadMode === "audio" ||
         (options.container && String(options.container).toLowerCase().includes("audio"));
 
+      let finalFilename = options.customFilename?.trim() || options.title?.trim() || "Online Media";
+      if (!/\.[a-zA-Z0-9]{2,5}$/.test(finalFilename)) {
+        finalFilename = `${finalFilename}${isAudio ? ".mp3" : ".mp4"}`;
+      }
+
       const newMediaTask: DownloadTask = {
         id: taskId || `ytdlp-${Date.now()}`,
         url: options.url,
-        filename: options.customFilename?.trim() || options.title?.trim() || "Online Media (yt-dlp)",
+        filename: finalFilename,
         save_path: options.saveFolder || defaultDir || "Downloads",
         total_bytes: 0,
         downloaded_bytes: 0,
@@ -599,6 +640,54 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleAddTorrentDownload = async (
+    urlOrPath: string,
+    savePath: string,
+    sequential: boolean
+  ) => {
+    try {
+      const resp: any = await invoke("add_torrent", {
+        request: {
+          source: urlOrPath,
+          saveFolder: savePath || defaultDir || "Downloads",
+          paused: false,
+          sequential,
+        },
+      });
+
+      const infoHash = resp?.info_hash || `torrent-${Date.now()}`;
+      const name = resp?.name || (urlOrPath.startsWith("magnet:") ? "Magnet Torrent" : urlOrPath.split(/[/\\]/).pop() || "Torrent");
+
+      const newTorrentTask: DownloadTask = {
+        id: infoHash,
+        url: urlOrPath,
+        filename: name,
+        save_path: savePath || defaultDir || "Downloads",
+        total_bytes: resp?.total_bytes || 0,
+        downloaded_bytes: 0,
+        percent: 0.0,
+        speed_bps: 0,
+        speed_formatted: "Connecting to swarm...",
+        eta_formatted: "--",
+        status: "downloading",
+        category: "torrents",
+        chunk_count: 1,
+        is_resumable: true,
+        chunks: [],
+        speedHistory: [],
+        errorMessage: undefined,
+        createdAt: new Date().toLocaleTimeString(),
+      };
+
+      setTasks((prev) => [newTorrentTask, ...prev.filter((t) => t.id !== newTorrentTask.id)]);
+      setSelectedTaskId(infoHash);
+      setSelectedTorrentId(infoHash);
+    } catch (e: any) {
+      console.error("Torrent download failed to start:", e);
+      throw e;
+    }
+  };
+
   useEffect(() => {
     handleAddDirectDownloadRef.current = handleAddDirectDownload;
     handleAddMediaDownloadRef.current = handleAddMediaDownload;
@@ -609,6 +698,7 @@ export const App: React.FC = () => {
   const categoryCounts = useMemo(() => {
     const counts: Record<CategoryType, number> = {
       all: tasks.length,
+      torrents: 0,
       compressed: 0,
       docs: 0,
       audio: 0,
@@ -832,7 +922,13 @@ export const App: React.FC = () => {
               onSelectTask={(id) => {
                 setSelectedTaskId(id);
                 const task = tasks.find((t) => t.id === id);
-                if (task) setActivePopupTask(task);
+                if (task) {
+                  if (task.category === "torrents") {
+                    setSelectedTorrentId(id);
+                  } else {
+                    setActivePopupTask(task);
+                  }
+                }
               }}
               onPause={handlePause}
               onResume={handleResume}
@@ -860,6 +956,16 @@ export const App: React.FC = () => {
             </div>
           )}
         </main>
+
+        {/* Torrent Details Drawer (Phase 1) */}
+        {selectedTorrentId && (
+          <TorrentDetailsDrawer
+            torrentId={selectedTorrentId}
+            isOpen={Boolean(selectedTorrentId)}
+            onClose={() => setSelectedTorrentId(null)}
+            theme={theme}
+          />
+        )}
       </div>
 
       {/* IDM Style Download Dialog / Popup Window */}
@@ -889,6 +995,7 @@ export const App: React.FC = () => {
         defaultFilename={modalInitialFilename}
         onAddDirectDownload={handleAddDirectDownload}
         onAddMediaDownload={handleAddMediaDownload}
+        onAddTorrentDownload={handleAddTorrentDownload}
         theme={theme}
       />
 

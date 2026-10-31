@@ -1,0 +1,317 @@
+// Goat Download Manager (GDM) - BitTorrent Engine
+// High-performance asynchronous BitTorrent client powered by librqbit Api facade
+// 100% clean-room Apache-2.0 implementation with qBittorrent-level features
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+use librqbit::api::{Api, TorrentDetailsResponse, TorrentIdOrHash};
+use librqbit::session::{AddTorrent, AddTorrentOptions, AddTorrentResponse, Session, SessionOptions};
+use librqbit::torrent_state::peer::stats::snapshot::PeerStatsSnapshot;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, State};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddTorrentRequest {
+    pub source: String, // Magnet URI or local file path to .torrent
+    pub save_folder: Option<String>,
+    pub selected_files: Option<Vec<usize>>,
+    pub paused: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorrentPiecesInfo {
+    pub total_pieces: u32,
+    pub pieces_bitfield: String, // base64 or hex of have pieces
+    pub have_pieces: u32,
+}
+
+pub struct TorrentState {
+    pub api: Arc<RwLock<Option<Api>>>,
+}
+
+impl Default for TorrentState {
+    fn default() -> Self {
+        Self {
+            api: Arc::new(RwLock::new(None)),
+        }
+    }
+}
+
+pub async fn get_or_init_torrent_api(
+    state: &TorrentState,
+    default_dir: Option<String>,
+) -> Result<Api, String> {
+    let mut guard = state.api.write().await;
+    if let Some(ref api) = *guard {
+        return Ok(api.clone());
+    }
+
+    let save_dir = default_dir.unwrap_or_else(|| {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_else(|_| ".".to_string());
+        format!("{}/Downloads", home)
+    });
+
+    let _ = std::fs::create_dir_all(&save_dir);
+
+    let session_opts = SessionOptions {
+        disable_dht: false,
+        fastresume: true,
+        ..Default::default()
+    };
+
+    let session = Session::new_with_opts(PathBuf::from(save_dir), session_opts)
+        .await
+        .map_err(|e| format!("Failed to initialize BitTorrent engine: {}", e))?;
+
+    let api = Api::new(session, None);
+    *guard = Some(api.clone());
+    Ok(api)
+}
+
+// ---------------------------------------------------------------------------
+// Command 1: Add Torrent (Magnet or .torrent)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn add_torrent(
+    app: AppHandle,
+    state: State<'_, TorrentState>,
+    request: AddTorrentRequest,
+) -> Result<TorrentDetailsResponse, String> {
+    let api = get_or_init_torrent_api(&state, request.save_folder.clone()).await?;
+
+    let is_magnet = request.source.starts_with("magnet:");
+    let add_torrent = if is_magnet {
+        AddTorrent::from_url(&request.source)
+    } else {
+        let p = PathBuf::from(&request.source);
+        if !p.exists() {
+            return Err(format!("File does not exist: {}", request.source));
+        }
+        let bytes = std::fs::read(&p).map_err(|e| format!("Failed to read file: {}", e))?;
+        AddTorrent::from_bytes(bytes)
+    };
+
+    let add_opts = AddTorrentOptions {
+        paused: request.paused.unwrap_or(false),
+        output_folder: request.save_folder.clone(),
+        only_files: request.selected_files.clone(),
+        overwrite: false,
+        ..Default::default()
+    };
+
+    let response = api
+        .api_add_torrent(add_torrent, Some(add_opts))
+        .await
+        .map_err(|e| format!("Failed to add torrent: {}", e))?;
+
+    let id = response.id.unwrap_or(0);
+    let id_or_hash = TorrentIdOrHash::Id(id);
+    let details = api
+        .api_torrent_details(id_or_hash)
+        .map_err(|e| format!("Failed to fetch torrent details: {}", e))?;
+
+    // Background live progress ticker emitting to GDM UI
+    let api_clone = api.clone();
+    let app_clone = app.clone();
+    let info_hash = details.info_hash.clone();
+
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
+
+            let current_details = match api_clone.api_torrent_details(id_or_hash) {
+                Ok(d) => d,
+                Err(_) => break, // Torrent removed or closed
+            };
+
+            let stats = current_details.stats.as_ref();
+            let live = stats.and_then(|s| s.live.as_ref());
+
+            let downloaded = live.map(|l| l.snapshot.downloaded_bytes).unwrap_or(0);
+            let total = live.map(|l| l.snapshot.total_bytes).unwrap_or(0);
+            let down_speed = live.map(|l| l.download_speed.mbps * 1024.0 * 1024.0 / 8.0).unwrap_or(0.0) as u64;
+            let up_speed = live.map(|l| l.upload_speed.mbps * 1024.0 * 1024.0 / 8.0).unwrap_or(0.0) as u64;
+
+            let pct = if total > 0 {
+                ((downloaded as f64 / total as f64) * 100.0).clamp(0.0, 100.0)
+            } else {
+                0.0
+            };
+
+            let is_paused = stats.map(|s| s.state.is_paused()).unwrap_or(false);
+            let status = if is_paused {
+                "paused"
+            } else if pct >= 100.0 {
+                "seeding"
+            } else if down_speed > 0 {
+                "downloading"
+            } else {
+                "stalled"
+            };
+
+            let _ = app_clone.emit(
+                "download-progress",
+                serde_json::json!({
+                    "id": info_hash.clone(),
+                    "percent": pct,
+                    "text": format!("{:.1}% of {}", pct, format_bytes(total)),
+                    "speed": format!("{}/s", format_bytes(down_speed)),
+                    "speed_formatted": format!("{}/s", format_bytes(down_speed)),
+                    "eta": "--",
+                    "eta_formatted": "--",
+                    "total_bytes": total,
+                    "downloaded_bytes": downloaded,
+                    "status": status,
+                    "category": "torrents",
+                }),
+            );
+
+            if pct >= 100.0 && status == "seeding" {
+                // Keep polling for seeding speed until stopped
+            }
+        }
+    });
+
+    Ok(details)
+}
+
+// ---------------------------------------------------------------------------
+// Command 2: Get Torrent Details (General, Files, Piece stats)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn get_torrent_details(
+    state: State<'_, TorrentState>,
+    id_or_hash: String,
+) -> Result<TorrentDetailsResponse, String> {
+    let api = get_or_init_torrent_api(&state, None).await?;
+    let target = TorrentIdOrHash::parse(&id_or_hash)
+        .map_err(|e| format!("Invalid torrent ID/hash: {}", e))?;
+    api.api_torrent_details(target)
+        .map_err(|e| format!("Failed to get details: {}", e))
+}
+
+// ---------------------------------------------------------------------------
+// Command 3: Pause Torrent
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn pause_torrent(
+    state: State<'_, TorrentState>,
+    id_or_hash: String,
+) -> Result<(), String> {
+    let api = get_or_init_torrent_api(&state, None).await?;
+    let target = TorrentIdOrHash::parse(&id_or_hash)
+        .map_err(|e| format!("Invalid torrent ID/hash: {}", e))?;
+    api.api_torrent_action_pause(target)
+        .await
+        .map_err(|e| format!("Failed to pause torrent: {}", e))
+}
+
+// ---------------------------------------------------------------------------
+// Command 4: Resume Torrent
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn resume_torrent(
+    state: State<'_, TorrentState>,
+    id_or_hash: String,
+) -> Result<(), String> {
+    let api = get_or_init_torrent_api(&state, None).await?;
+    let target = TorrentIdOrHash::parse(&id_or_hash)
+        .map_err(|e| format!("Invalid torrent ID/hash: {}", e))?;
+    api.api_torrent_action_start(target)
+        .await
+        .map_err(|e| format!("Failed to resume torrent: {}", e))
+}
+
+// ---------------------------------------------------------------------------
+// Command 5: Remove Torrent (Optionally delete files)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn remove_torrent(
+    state: State<'_, TorrentState>,
+    id_or_hash: String,
+    delete_files: bool,
+) -> Result<(), String> {
+    let api = get_or_init_torrent_api(&state, None).await?;
+    let target = TorrentIdOrHash::parse(&id_or_hash)
+        .map_err(|e| format!("Invalid torrent ID/hash: {}", e))?;
+    if delete_files {
+        api.api_torrent_action_delete(target)
+            .await
+            .map_err(|e| format!("Failed to delete torrent: {}", e))?;
+    } else {
+        api.api_torrent_action_forget(target)
+            .await
+            .map_err(|e| format!("Failed to forget torrent: {}", e))?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Command 6: Get Connected Peers
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn get_torrent_peers(
+    state: State<'_, TorrentState>,
+    id_or_hash: String,
+) -> Result<PeerStatsSnapshot, String> {
+    let api = get_or_init_torrent_api(&state, None).await?;
+    let target = TorrentIdOrHash::parse(&id_or_hash)
+        .map_err(|e| format!("Invalid torrent ID/hash: {}", e))?;
+    api.api_peer_stats(target, None)
+        .map_err(|e| format!("Failed to get peer stats: {}", e))
+}
+
+// ---------------------------------------------------------------------------
+// Command 7: Get Pieces Info for Visual Bar
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn get_torrent_pieces(
+    state: State<'_, TorrentState>,
+    id_or_hash: String,
+) -> Result<TorrentPiecesInfo, String> {
+    let api = get_or_init_torrent_api(&state, None).await?;
+    let target = TorrentIdOrHash::parse(&id_or_hash)
+        .map_err(|e| format!("Invalid torrent ID/hash: {}", e))?;
+    let (bf, total) = api
+        .api_dump_haves(target)
+        .map_err(|e| format!("Failed to dump pieces: {}", e))?;
+
+    let have_count = bf.count_ones() as u32;
+    let bytes: &[u8] = bf.as_raw_slice();
+    let hex_bitfield = hex::encode(bytes);
+
+    Ok(TorrentPiecesInfo {
+        total_pieces: total,
+        pieces_bitfield: hex_bitfield,
+        have_pieces: have_count,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Helper: Format bytes
+// ---------------------------------------------------------------------------
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
+}

@@ -42,7 +42,7 @@ export interface DownloadTask {
   eta?: string;
   progressText?: string;
   status: TaskStatus;
-  category: "all" | "video" | "audio" | "docs" | "compressed" | "programs" | string;
+  category: "all" | "video" | "audio" | "docs" | "compressed" | "programs" | "torrents" | string;
   chunk_count?: number;
   chunkCount?: number;
   connections?: number;
@@ -216,4 +216,55 @@ export interface ToolVersionInfo {
   latestVersion: string;
   hasUpdate: boolean;
   isUpdating?: boolean;
+}
+
+export interface TorrentFileItem {
+  index: number;
+  path: string;
+  filename: string;
+  length: number;
+  length_formatted: string;
+  selected: boolean;
+  priority: "skip" | "normal" | "high" | "max";
+}
+
+export interface TorrentPeerItem {
+  addr: string;
+  client: string;
+  flags: string;
+  down_speed: string;
+  up_speed: string;
+  progress: number;
+}
+
+export interface TorrentTrackerItem {
+  url: string;
+  status: string;
+  peers: number;
+  seeds: number;
+  interval: number;
+}
+
+export interface TorrentDetailsData {
+  id: string;
+  name: string;
+  info_hash: string;
+  state: "queued" | "checking" | "downloading" | "seeding" | "paused" | "stalled" | "error";
+  total_bytes: number;
+  downloaded_bytes: number;
+  uploaded_bytes: number;
+  progress: number;
+  download_speed: string;
+  upload_speed: string;
+  eta: string;
+  ratio: number;
+  peers_connected: number;
+  seeds_connected: number;
+  save_path: string;
+  piece_length: number;
+  num_pieces: number;
+  pieces_downloaded: number;
+  files: TorrentFileItem[];
+  peers: TorrentPeerItem[];
+  trackers: TorrentTrackerItem[];
 }
