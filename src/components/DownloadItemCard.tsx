@@ -109,7 +109,13 @@ export const DownloadItemCard: React.FC<DownloadItemCardProps> = ({
               <h3
                 className="font-semibold text-[14px] text-gdm-primary truncate cursor-pointer hover:underline"
                 title={task.filename}
-                onClick={() => isCompleted && onOpenFile(task.save_path || task.savePath || "")}
+                onClick={() => {
+                  if (!isCompleted) return;
+                  const folder = task.save_path || task.savePath || "";
+                  const fn = task.filename || "";
+                  const full = folder ? `${folder.replace(/[/\\]+$/, "")}\\${fn}` : fn;
+                  onOpenFile(full);
+                }}
               >
                 {task.filename}
               </h3>
@@ -166,7 +172,12 @@ export const DownloadItemCard: React.FC<DownloadItemCardProps> = ({
 
           {isCompleted && (
             <button
-              onClick={() => onOpenFile(task.save_path || task.savePath || "")}
+              onClick={() => {
+                const folder = task.save_path || task.savePath || "";
+                const fn = task.filename || "";
+                const full = folder ? `${folder.replace(/[/\\]+$/, "")}\\${fn}` : fn;
+                onOpenFile(full);
+              }}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-gdm-secondary hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               title="Open File"
               aria-label="Open File"

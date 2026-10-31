@@ -422,7 +422,10 @@ export const App: React.FC = () => {
     try {
       await invoke("open_file", { path });
     } catch (err) {
-      console.error("Open file error:", err);
+      console.error("Open file error, attempting fallback to open_folder:", err);
+      try {
+        await invoke("open_folder", { path });
+      } catch {}
     }
   };
 
@@ -791,7 +794,11 @@ export const App: React.FC = () => {
       {/* Add Download Modal */}
       <AddDownloadModal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setModalInitialUrl("");
+          setModalInitialFilename("");
+        }}
         defaultUrl={modalInitialUrl}
         defaultFilename={modalInitialFilename}
         onAddDirectDownload={handleAddDirectDownload}

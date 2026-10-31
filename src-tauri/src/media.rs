@@ -938,7 +938,13 @@ pub async fn start_download(
         }
 
         let mut cmd = make_command("yt-dlp");
-        cmd.args(["--newline", "--progress", "--no-playlist"]);
+        cmd.args([
+            "--newline",
+            "--progress",
+            "--no-playlist",
+            "--progress-template",
+            "download:[GDM_PROG] %(progress._percent_str)s | %(progress.downloaded_bytes)s | %(progress.total_bytes)s | %(progress.total_bytes_estimate)s | %(progress._speed_str)s | %(progress._eta_str)s",
+        ]);
 
         // Ensure Node or Deno JS runtime
         if find_exe_in_augmented_path("node").is_some() {
@@ -1041,14 +1047,8 @@ pub async fn start_download(
         };
         cmd.args(["-o", &out_tmpl, "--windows-filenames", "--no-playlist", "--no-check-certificates", "--concurrent-fragments", "4"]);
 
-        // Resumable Part Files & Continue - Always resume from saved byte
-        cmd.arg("-c"); // --continue
-        if options.use_part_files {
-            cmd.arg("--part");
-        } else {
-            cmd.arg("--no-part");
-        }
-        cmd.arg("--no-keep-fragments");
+        // Resumable Part Files & Continue - Always resume from saved byte and enable MPEG-TS for HLS/Kick/Twitch
+        cmd.args(["-c", "--part", "--hls-use-mpegts"]);
         if options.overwrite_files || is_clipping_active {
             cmd.arg("--force-overwrites");
         } else {
@@ -1365,7 +1365,67 @@ pub async fn start_download(
                 }
                 let _ = app.emit("download-log", trimmed.to_string());
 
-                // Parse standard yt-dlp progress line: [download]  45.2% of 84.60MiB at  6.42MiB/s ETA 00:06
+                // Parse structured GDM progress template: [GDM_PROG] 45.2% | 1234567 | 2345678 | NA | 3.80MiB/s | 01:30:00
+                if trimmed.starts_with("[GDM_PROG]") {
+                    let payload = trimmed.trim_start_matches("[GDM_PROG]").trim();
+                    let parts: Vec<&str> = payload.split('|').map(|s| s.trim()).collect();
+                    if parts.len() >= 6 {
+                        let pct_str = parts[0].trim_end_matches('%').trim();
+                        let mut pct = pct_str.parse::<f64>().unwrap_or(0.0);
+
+                        let down_b = parts[1].parse::<u64>().unwrap_or(0);
+                        if down_b > 0 {
+                            last_downloaded_bytes = down_b;
+                        }
+
+                        let mut tot_b = parts[2].parse::<u64>().unwrap_or(0);
+                        if tot_b == 0 {
+                            if let Ok(f) = parts[3].parse::<f64>() {
+                                if f > 0.0 {
+                                    tot_b = f as u64;
+                                }
+                            }
+                        }
+                        if tot_b > 0 {
+                            last_total_bytes = tot_b;
+                        }
+
+                        if pct <= 0.0 && last_total_bytes > 0 && last_downloaded_bytes > 0 {
+                            pct = ((last_downloaded_bytes as f64 / last_total_bytes as f64) * 100.0).clamp(0.0, 99.9);
+                        }
+
+                        let speed_str = if parts[4] == "NA" || parts[4].is_empty() {
+                            "".to_string()
+                        } else {
+                            parts[4].to_string()
+                        };
+
+                        let eta_str = if parts[5] == "NA" || parts[5] == "Unknown" || parts[5].is_empty() {
+                            "--".to_string()
+                        } else {
+                            parts[5].to_string()
+                        };
+
+                        let _ = app.emit(
+                            "download-progress",
+                            serde_json::json!({
+                                "id": tid.clone(),
+                                "percent": pct,
+                                "text": format!("{:.1}% of {} at {}", pct, format_bytes(last_total_bytes), speed_str),
+                                "speed": speed_str.clone(),
+                                "speed_formatted": speed_str.clone(),
+                                "eta": eta_str.clone(),
+                                "eta_formatted": eta_str.clone(),
+                                "total_bytes": last_total_bytes,
+                                "downloaded_bytes": last_downloaded_bytes,
+                                "status": "downloading".to_string(),
+                            }),
+                        );
+                        continue;
+                    }
+                }
+
+                // Parse standard yt-dlp progress line fallback: [download]  45.2% of 84.60MiB at  6.42MiB/s ETA 00:06
                 if trimmed.starts_with("[download]") && trimmed.contains('%') {
                     let after_tag = trimmed.trim_start_matches("[download]").trim();
                     let pct_part = after_tag.split('%').next().unwrap_or("0").trim();
@@ -1383,6 +1443,8 @@ pub async fn start_download(
 
                     let downloaded_bytes = if last_total_bytes > 0 {
                         ((last_total_bytes as f64) * (pct / 100.0)) as u64
+                    } else if last_downloaded_bytes > 0 {
+                        last_downloaded_bytes
                     } else {
                         0
                     };
@@ -1421,7 +1483,7 @@ pub async fn start_download(
                             "eta": eta.clone(),
                             "eta_formatted": eta.clone(),
                             "total_bytes": last_total_bytes,
-                            "downloaded_bytes": downloaded_bytes,
+                            "downloaded_bytes": last_downloaded_bytes,
                             "status": "downloading".to_string(),
                         }),
                     );
@@ -1765,30 +1827,100 @@ pub async fn update_tool(tool_name: String) -> Result<String, String> {
 }
 
 // ---------------------------------------------------------------------------
-// Command 5: Open Folder in Native File Manager
+// Command 5: Open Folder or File in Native File Manager / OS Associated App
 // ---------------------------------------------------------------------------
 
 #[command]
-pub async fn open_folder(path: String) -> Result<(), String> {
-    let _ = fs::create_dir_all(&path);
+pub async fn open_file(path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    if !p.exists() {
+        if let Some(parent) = p.parent() {
+            if let Some(file_stem) = p.file_stem().and_then(|s| s.to_str()) {
+                if let Ok(entries) = fs::read_dir(parent) {
+                    for entry in entries.flatten() {
+                        let ep = entry.path();
+                        if ep.is_file() {
+                            if let Some(stem) = ep.file_stem().and_then(|s| s.to_str()) {
+                                if stem == file_stem || stem.starts_with(file_stem) {
+                                    return launch_file(&ep.to_string_lossy());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return Err(format!("File does not exist: {}", path));
+    }
+    launch_file(&path)
+}
+
+fn launch_file(file_path: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
+        Command::new("cmd")
+            .args(["/c", "start", "", file_path])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(file_path)
+            .spawn()
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+    }
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        Command::new("xdg-open")
+            .arg(file_path)
+            .spawn()
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+    }
+    Ok(())
+}
+
+#[command]
+pub async fn open_folder(path: String) -> Result<(), String> {
+    let p = PathBuf::from(&path);
+    #[cfg(target_os = "windows")]
+    {
+        if p.is_file() {
+            Command::new("explorer")
+                .args(["/select,", &path])
+                .spawn()
+                .map_err(|e| format!("Failed to open folder: {}", e))?;
+            return Ok(());
+        }
+        let folder = if p.is_dir() { path.clone() } else {
+            p.parent().and_then(|parent| parent.to_str()).unwrap_or(&path).to_string()
+        };
+        let _ = fs::create_dir_all(&folder);
         Command::new("explorer")
-            .arg(&path)
+            .arg(&folder)
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }
     #[cfg(target_os = "macos")]
     {
+        let folder = if p.is_dir() { path.clone() } else {
+            p.parent().and_then(|parent| parent.to_str()).unwrap_or(&path).to_string()
+        };
+        let _ = fs::create_dir_all(&folder);
         Command::new("open")
-            .arg(&path)
+            .arg(&folder)
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }
     #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
     {
+        let folder = if p.is_dir() { path.clone() } else {
+            p.parent().and_then(|parent| parent.to_str()).unwrap_or(&path).to_string()
+        };
+        let _ = fs::create_dir_all(&folder);
         Command::new("xdg-open")
-            .arg(&path)
+            .arg(&folder)
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }

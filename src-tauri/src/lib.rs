@@ -533,6 +533,7 @@ pub fn run() {
             media::check_tool_updates,
             media::update_tool,
             media::open_folder,
+            media::open_file,
             media::install_app_update,
             get_pending_url,
             ytdlp_get_info,

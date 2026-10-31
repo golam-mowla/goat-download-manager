@@ -114,10 +114,14 @@
       let postArticle = element
         ? element.closest("article") || element.closest("div[role='dialog']")
         : null;
+      if (!postArticle && currentTargetVideo) {
+        postArticle =
+          currentTargetVideo.closest("article") ||
+          currentTargetVideo.closest("div[role='dialog']");
+      }
       if (!postArticle) {
         postArticle =
-          document.querySelector("article:hover, div[role='dialog']:hover") ||
-          document.querySelector("article");
+          document.querySelector("article:hover, div[role='dialog']:hover");
       }
 
       let postUrl = window.location.href;
@@ -159,7 +163,8 @@
       }
 
       const vid =
-        element?.tagName === "VIDEO" ? element : element?.querySelector?.("video");
+        (element?.tagName === "VIDEO" ? element : element?.querySelector?.("video")) ||
+        currentTargetVideo;
       if (vid && vid.currentSrc && isValidDownloadUrl(vid.currentSrc)) {
         return {
           url: stripRangeParams(vid.currentSrc),
@@ -281,6 +286,20 @@
     const title = mediaTarget.title || "Video";
     const hostname = window.location.hostname;
     const vid = mediaTarget.videoEl || currentTargetVideo;
+    const directSrc =
+      vid && vid.currentSrc && isValidDownloadUrl(vid.currentSrc)
+        ? stripRangeParams(vid.currentSrc)
+        : vid && vid.src && isValidDownloadUrl(vid.src)
+        ? stripRangeParams(vid.src)
+        : "";
+
+    let directPath = "";
+    if (directSrc) {
+      try {
+        directPath = new URL(directSrc).pathname;
+      } catch (e) {}
+    }
+
     let durationSec = 0;
     if (vid && vid.duration && !isNaN(vid.duration) && isFinite(vid.duration)) {
       durationSec = Math.round(vid.duration);
@@ -304,9 +323,23 @@
       // 2. Instagram (Reels & Feed)
       const cleanTitle = title.length > 36 ? title.slice(0, 36) + "..." : title;
 
-      // Filter valid video streams (strip range params and remove duplicates)
+      // Filter valid video streams strictly belonging to THIS post/video
       const validStreams = sniffedStreams
-        .filter((st) => !st.isAudio && (st.contentLength === 0 || st.contentLength >= 50000))
+        .filter((st) => {
+          if (st.isAudio) return false;
+          if (st.contentLength > 0 && st.contentLength < 50000) return false;
+          if (directSrc) {
+            const cleanSt = stripRangeParams(st.url);
+            if (cleanSt === directSrc) return true;
+            if (directPath) {
+              try {
+                if (new URL(cleanSt).pathname === directPath) return true;
+              } catch (e) {}
+            }
+            return false;
+          }
+          return true;
+        })
         .map((st) => ({
           ...st,
           url: stripRangeParams(st.url),
@@ -335,7 +368,7 @@
       });
 
       if (options.length === 0) {
-        const cleanTargetUrl = stripRangeParams(mediaTarget.url || window.location.href);
+        const cleanTargetUrl = directSrc || stripRangeParams(mediaTarget.url || window.location.href);
         options.push(
           { label: `${cleanTitle} MP4 file, ${durStr}quality 1080p HD`, quality: "1080p HD", url: cleanTargetUrl },
           { label: `${cleanTitle} MP4 file, ${durStr}quality 720p HD`, quality: "720p HD", url: cleanTargetUrl },
@@ -343,12 +376,33 @@
           { label: `${cleanTitle} MP3 Audio, Original Audio`, quality: "Audio", url: cleanTargetUrl }
         );
       }
+      if (mediaTarget.postUrl && mediaTarget.postUrl !== window.location.href) {
+        options.push({
+          label: `${cleanTitle} (Best HD & Audio via Post Link)`,
+          quality: "Best",
+          url: mediaTarget.postUrl,
+        });
+      }
     } else {
       // 3. Any other website
       const cleanTitle = title.length > 40 ? title.slice(0, 40) + "..." : title;
 
       const validStreams = sniffedStreams
-        .filter((st) => !st.isAudio && (st.contentLength === 0 || st.contentLength >= 50000))
+        .filter((st) => {
+          if (st.isAudio) return false;
+          if (st.contentLength > 0 && st.contentLength < 50000) return false;
+          if (directSrc) {
+            const cleanSt = stripRangeParams(st.url);
+            if (cleanSt === directSrc) return true;
+            if (directPath) {
+              try {
+                if (new URL(cleanSt).pathname === directPath) return true;
+              } catch (e) {}
+            }
+            return false;
+          }
+          return true;
+        })
         .map((st) => ({
           ...st,
           url: stripRangeParams(st.url),
@@ -376,7 +430,7 @@
       });
 
       if (options.length === 0) {
-        const cleanTargetUrl = stripRangeParams(mediaTarget.url || window.location.href);
+        const cleanTargetUrl = directSrc || stripRangeParams(mediaTarget.url || window.location.href);
         options.push(
           { label: `${cleanTitle}, MP4 file, Best Available HD Quality`, quality: "Best", url: cleanTargetUrl },
           { label: `${cleanTitle}, MP4 file, quality 1080p HD`, quality: "1080p HD", url: cleanTargetUrl },

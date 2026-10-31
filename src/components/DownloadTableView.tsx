@@ -132,7 +132,13 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                         <span
                           className="truncate text-[14px] font-semibold text-gdm-primary hover:underline"
                           title={task.filename}
-                          onDoubleClick={() => isCompleted && onOpenFile(task.save_path || task.savePath || "")}
+                          onDoubleClick={() => {
+                            if (!isCompleted) return;
+                            const folder = task.save_path || task.savePath || "";
+                            const fn = task.filename || "";
+                            const full = folder ? `${folder.replace(/[/\\]+$/, "")}\\${fn}` : fn;
+                            onOpenFile(full);
+                          }}
                         >
                           {task.filename}
                         </span>
@@ -239,7 +245,12 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
 
                         {isCompleted && (
                           <button
-                            onClick={() => onOpenFile(task.save_path || task.savePath || "")}
+                            onClick={() => {
+                              const folder = task.save_path || task.savePath || "";
+                              const fn = task.filename || "";
+                              const full = folder ? `${folder.replace(/[/\\]+$/, "")}\\${fn}` : fn;
+                              onOpenFile(full);
+                            }}
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-gdm-secondary hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                             title="Open File"
                             aria-label="Open File"

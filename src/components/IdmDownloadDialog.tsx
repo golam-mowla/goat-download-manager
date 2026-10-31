@@ -282,7 +282,12 @@ export const IdmDownloadDialog: React.FC<IdmDownloadDialogProps> = ({
               {isCompleted ? (
                 <>
                   <button
-                    onClick={() => onOpenFile(task.save_path || task.savePath || "")}
+                    onClick={() => {
+                      const folder = task.save_path || task.savePath || "";
+                      const fn = task.filename || "";
+                      const full = folder ? `${folder.replace(/[/\\]+$/, "")}\\${fn}` : fn;
+                      onOpenFile(full);
+                    }}
                     className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[13px] transition-colors shadow-xs"
                   >
                     <FileCheck className="w-4 h-4" />
