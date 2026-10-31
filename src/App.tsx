@@ -348,10 +348,43 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Helper to check if task is a yt-dlp media extraction task
+  const isMediaTask = (task?: DownloadTask, id?: string) => {
+    const targetId = id || task?.id || "";
+    if (targetId.startsWith("media-") || targetId.startsWith("ytdlp-")) return true;
+    if (!task) return false;
+    const u = (task.url || "").toLowerCase();
+    return (
+      u.includes("kick.com") ||
+      u.includes("youtube.com") ||
+      u.includes("youtu.be") ||
+      u.includes("instagram.com") ||
+      u.includes("twitch.tv") ||
+      u.includes("facebook.com") ||
+      u.includes("tiktok.com") ||
+      u.includes("twitter.com") ||
+      u.includes("x.com") ||
+      u.includes(".m3u8")
+    );
+  };
+
   // IDM Action Handlers
   const handlePause = async (id: string) => {
     try {
-      await invoke("pause_http_download", { taskId: id });
+      const task = tasks.find((t) => t.id === id);
+      if (isMediaTask(task, id)) {
+        try {
+          await invoke("cancel_download", { taskId: id });
+        } catch (e) {
+          console.warn("Media cancel_download error:", e);
+        }
+      } else {
+        try {
+          await invoke("pause_http_download", { taskId: id });
+        } catch (e) {
+          console.warn("pause_http_download error:", e);
+        }
+      }
       setTasks((prev) =>
         prev.map((t) => (t.id === id ? { ...t, status: "paused" } : t))
       );
@@ -362,6 +395,7 @@ export const App: React.FC = () => {
 
   const handleResume = async (id: string) => {
     try {
+      const task = tasks.find((t) => t.id === id);
       setTasks((prev) =>
         prev.map((t) =>
           t.id === id
@@ -369,7 +403,46 @@ export const App: React.FC = () => {
             : t
         )
       );
-      await invoke("resume_http_download", { taskId: id });
+
+      if (task && isMediaTask(task, id)) {
+        // Resume media task via start_download with existing task ID and file path
+        try {
+          await invoke("start_download", {
+            options: {
+              taskId: task.id,
+              url: task.url,
+              saveFolder: task.save_path || task.savePath || defaultDirRef.current,
+              customFilename: task.filename,
+              downloadMode: task.category === "audio" ? "audio" : "video",
+              container: task.category === "audio" ? "MP3 (Audio)" : "MP4 (Video)",
+              videoStreamId: "best",
+              audioStreamId: "ba",
+              audioBitrate: "Best",
+              enableSubtitles: false,
+              subtitleLang: "en",
+              subtitleFormat: "srt",
+              subtitleSaveMode: "separate",
+              enableClip: false,
+              startTime: "",
+              endTime: "",
+              preciseCut: false,
+              maxActiveDownloads: 3,
+              overwriteFiles: false,
+              includeMediaId: false,
+              includeAutoSubtitles: false,
+              includeSuperRes: false,
+              preferredVideoCodec: "default",
+              preferredAudioCodec: "default",
+              preferredSubtitleFormat: "default",
+              preferredFps: "default",
+            },
+          });
+        } catch (e) {
+          console.error("start_download resume error:", e);
+        }
+      } else {
+        await invoke("resume_http_download", { taskId: id });
+      }
     } catch (err) {
       console.error("Resume failed:", err);
     }
@@ -377,7 +450,16 @@ export const App: React.FC = () => {
 
   const handleCancel = async (id: string) => {
     try {
-      await invoke("cancel_http_download", { taskId: id });
+      const task = tasks.find((t) => t.id === id);
+      if (isMediaTask(task, id)) {
+        try {
+          await invoke("cancel_download", { taskId: id });
+        } catch {}
+      } else {
+        try {
+          await invoke("cancel_http_download", { taskId: id });
+        } catch {}
+      }
       setTasks((prev) =>
         prev.map((t) => (t.id === id ? { ...t, status: "cancelled" } : t))
       );
@@ -399,7 +481,11 @@ export const App: React.FC = () => {
   const handleStopAll = async () => {
     tasks.forEach((t) => {
       if (t.status === "downloading") {
-        invoke("pause_http_download", { taskId: t.id }).catch(() => {});
+        if (isMediaTask(t, t.id)) {
+          invoke("cancel_download", { taskId: t.id }).catch(() => {});
+        } else {
+          invoke("pause_http_download", { taskId: t.id }).catch(() => {});
+        }
       }
     });
     setTasks((prev) =>

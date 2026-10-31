@@ -136,21 +136,51 @@
           postUrl = postLink.href;
         }
 
-        // Find post caption
-        const captionEl = postArticle.querySelector(
-          "span._ap3a, div._a9zs, span[dir='auto'], h1, h2"
-        );
-        if (
-          captionEl &&
-          captionEl.innerText &&
-          captionEl.innerText.trim().length > 3
-        ) {
-          postTitle = captionEl.innerText.trim().replace(/\r?\n+/g, " ");
-        } else {
-          const authorEl = postArticle.querySelector("header a, a[role='link']");
-          if (authorEl && authorEl.innerText) {
-            postTitle = `Instagram video by ${authorEl.innerText.trim()}`;
+        // 1. Author Name
+        let author = "";
+        const authorEl = postArticle.querySelector("header a, header h2, a[role='link']");
+        if (authorEl && authorEl.innerText) {
+          author = authorEl.innerText.trim();
+        }
+
+        // 2. Reel Caption / Title (Crucial: DO NOT pick the author name in header!)
+        const headerEl = postArticle.querySelector("header");
+
+        // Try Instagram's primary caption selectors outside header
+        const explicitCaption = postArticle.querySelector("h1, div._a9zs, span._aade");
+        if (explicitCaption && (!headerEl || !headerEl.contains(explicitCaption))) {
+          const t = explicitCaption.innerText?.trim();
+          if (t && t.length > 2 && (!author || !author.includes(t))) {
+            postTitle = t;
           }
+        }
+
+        if (!postTitle) {
+          // Scan spans that have dir="auto" or _ap3a but NOT inside header, NOT audio links, NOT buttons
+          const candidateSpans = postArticle.querySelectorAll("span[dir='auto'], span._ap3a");
+          for (const sp of candidateSpans) {
+            if (headerEl && headerEl.contains(sp)) continue;
+            if (sp.closest("a[href*='/audio/'], a[href*='/music/'], button, header")) continue;
+            const txt = sp.innerText?.trim();
+            if (txt && txt.length > 2 && (!author || !author.includes(txt))) {
+              postTitle = txt;
+              break;
+            }
+          }
+        }
+
+        if (!postTitle && author) {
+          postTitle = `Instagram Reel by ${author}`;
+        }
+      }
+
+      if (postTitle) {
+        postTitle = postTitle
+          .replace(/\s*\.\.\.\s*more$/i, "")
+          .replace(/[\r\n\t]+/g, " ")
+          .trim();
+        if (postTitle.length > 65) {
+          postTitle = postTitle.slice(0, 65).trim() + "...";
         }
       }
 
@@ -320,68 +350,42 @@
         { label: `${title}, MP3 Audio, Highest Quality`, quality: "Audio", url: mediaTarget.url }
       );
     } else if (hostname.includes("instagram.com")) {
-      // 2. Instagram (Reels & Feed)
-      const cleanTitle = title.length > 36 ? title.slice(0, 36) + "..." : title;
+      // 2. Instagram (Reels & Feed) - Always download the FULL video, never broken fragments
+      const cleanTitle = title.length > 40 ? title.slice(0, 40) + "..." : title;
+      const targetVideoSrc = directSrc || stripRangeParams(mediaTarget.url);
 
-      // Filter valid video streams strictly belonging to THIS post/video
-      const validStreams = sniffedStreams
-        .filter((st) => {
-          if (st.isAudio) return false;
-          if (st.contentLength > 0 && st.contentLength < 50000) return false;
-          if (directSrc) {
-            const cleanSt = stripRangeParams(st.url);
-            if (cleanSt === directSrc) return true;
-            if (directPath) {
-              try {
-                if (new URL(cleanSt).pathname === directPath) return true;
-              } catch (e) {}
-            }
-            return false;
-          }
-          return true;
-        })
-        .map((st) => ({
-          ...st,
-          url: stripRangeParams(st.url),
-        }));
-
-      // Sort by bitrate or contentLength descending (highest quality first)
-      validStreams.sort(
-        (a, b) => (b.bitrate || b.contentLength || 0) - (a.bitrate || a.contentLength || 0)
-      );
-
-      const seen = new Set();
-      validStreams.forEach((st) => {
-        const bitStr = st.bitrate ? `${st.bitrate} kbps` : "";
-        const key = `${st.quality}_${bitStr}_${st.url}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-
-        const detailsList = [bitStr, st.sizeFormatted].filter(Boolean);
-        const detailStr = detailsList.length > 0 ? `, ${detailsList.join(", ")}` : "";
-
+      if (targetVideoSrc) {
         options.push({
-          label: `${cleanTitle} MP4 file, ${durStr}quality ${st.quality}${detailStr}`,
-          quality: st.quality,
-          url: st.url,
+          label: `${cleanTitle} - Full HD MP4 Video (Direct Stream)`,
+          quality: "1080p HD",
+          url: targetVideoSrc,
         });
-      });
+      }
+
+      const postLink =
+        mediaTarget.postUrl ||
+        (window.location.href.includes("/reel/") || window.location.href.includes("/p/")
+          ? window.location.href
+          : "");
+
+      if (postLink) {
+        options.push({
+          label: `${cleanTitle} (Best HD & Audio via Reel Link)`,
+          quality: "Best",
+          url: postLink,
+        });
+        options.push({
+          label: `${cleanTitle} (Original Audio MP3)`,
+          quality: "Audio",
+          url: postLink,
+        });
+      }
 
       if (options.length === 0) {
-        const cleanTargetUrl = directSrc || stripRangeParams(mediaTarget.url || window.location.href);
         options.push(
-          { label: `${cleanTitle} MP4 file, ${durStr}quality 1080p HD`, quality: "1080p HD", url: cleanTargetUrl },
-          { label: `${cleanTitle} MP4 file, ${durStr}quality 720p HD`, quality: "720p HD", url: cleanTargetUrl },
-          { label: `${cleanTitle} MP4 file, ${durStr}quality 480p`, quality: "480p", url: cleanTargetUrl },
-          { label: `${cleanTitle} MP3 Audio, Original Audio`, quality: "Audio", url: cleanTargetUrl }
+          { label: `${cleanTitle} - Full Video`, quality: "Best", url: targetVideoSrc || window.location.href },
+          { label: `${cleanTitle} - MP3 Audio`, quality: "Audio", url: targetVideoSrc || window.location.href }
         );
-      }
-      if (mediaTarget.postUrl && mediaTarget.postUrl !== window.location.href) {
-        options.push({
-          label: `${cleanTitle} (Best HD & Audio via Post Link)`,
-          quality: "Best",
-          url: mediaTarget.postUrl,
-        });
       }
     } else {
       // 3. Any other website
@@ -553,21 +557,33 @@
 
     dropdown.appendChild(list);
 
-    // Position directly beneath the grabber button
+    // Position directly beneath the grabber button (smart align based on button position)
     const btnRect = anchorBtn.getBoundingClientRect();
     const top = Math.min(window.innerHeight - 200, btnRect.bottom + 2);
-    const right = Math.max(8, window.innerWidth - btnRect.right);
-
+    if (btnRect.left < window.innerWidth / 2) {
+      dropdown.style.left = `${Math.max(8, btnRect.left)}px`;
+      dropdown.style.right = "auto";
+    } else {
+      dropdown.style.right = `${Math.max(8, window.innerWidth - btnRect.right)}px`;
+      dropdown.style.left = "auto";
+    }
     dropdown.style.top = `${top}px`;
-    dropdown.style.right = `${right}px`;
 
     document.body.appendChild(dropdown);
     activeDropdown = dropdown;
   }
 
   // ---------------------------------------------------------------------------
-  // IDM-Style Floating Video Grabber Overlay
+  // IDM-Style Floating Video Grabber Overlay (Draggable & Repositionable)
   // ---------------------------------------------------------------------------
+  let isDraggingGrabber = false;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let dragStartBtnLeft = 0;
+  let dragStartBtnTop = 0;
+  let hasDragged = false;
+  let userCustomOffset = null; // { relX, relY, isAbsolute?: boolean }
+
   function ensureGrabberContainer() {
     const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
     if (fsEl) {
@@ -593,7 +609,8 @@
     const btn = document.createElement("div");
     btn.id = "gdm-floating-grabber";
     btn.innerHTML = `
-      <div style="display:flex;align-items:center;gap:6px;padding:0 3px;">
+      <div style="display:flex;align-items:center;gap:5px;padding:0 2px;">
+        <span style="display:inline-flex;align-items:center;color:#64748b;cursor:grab;font-size:12px;padding:0 2px;user-select:none;" title="Drag to move" id="gdm-drag-handle">⠿</span>
         <span style="display:inline-block;color:#16a34a;font-size:12px;font-weight:900;text-shadow:0 1px 1px rgba(0,0,0,0.25);">▶</span>
         <span style="font-size:12px;font-weight:800;letter-spacing:0.2px;font-family:Arial,Tahoma,sans-serif;color:#dc2626;text-shadow:0 1px 0 #ffffff;white-space:nowrap;">Download this video</span>
         <span style="font-size:11px;color:#475569;font-weight:bold;margin-left:4px;padding:0 4px;border-left:1px solid #94a3b8;cursor:pointer;" title="Goat Download Manager (GDM)" id="gdm-help-btn">?</span>
@@ -636,7 +653,27 @@
       scheduleHide();
     });
 
+    // Drag support
+    btn.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      if (e.target && (e.target.id === "gdm-close-btn" || e.target.id === "gdm-help-btn")) return;
+      isDraggingGrabber = true;
+      hasDragged = false;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      const r = btn.getBoundingClientRect();
+      dragStartBtnLeft = r.left;
+      dragStartBtnTop = r.top;
+      btn.style.cursor = "grabbing";
+      clearTimeout(hideTimer);
+    });
+
     btn.addEventListener("click", (e) => {
+      if (hasDragged) {
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
       const target = e.target;
       if (target && target.id === "gdm-close-btn") {
         e.stopPropagation();
@@ -673,9 +710,63 @@
     activeGrabberButton = btn;
   }
 
+  // Global mousemove and mouseup listeners for dragging
+  document.addEventListener(
+    "mousemove",
+    (e) => {
+      if (!isDraggingGrabber || !activeGrabberButton) return;
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        hasDragged = true;
+        clearTimeout(hideTimer);
+        const newLeft = Math.max(
+          8,
+          Math.min(window.innerWidth - activeGrabberButton.offsetWidth - 8, dragStartBtnLeft + dx)
+        );
+        const newTop = Math.max(
+          8,
+          Math.min(window.innerHeight - activeGrabberButton.offsetHeight - 8, dragStartBtnTop + dy)
+        );
+        activeGrabberButton.style.left = `${newLeft}px`;
+        activeGrabberButton.style.top = `${newTop}px`;
+        activeGrabberButton.style.right = "auto";
+
+        const ref = currentTargetContainer || currentTargetVideo;
+        if (ref) {
+          const vRect = ref.getBoundingClientRect();
+          userCustomOffset = {
+            relX: newLeft - vRect.left,
+            relY: newTop - vRect.top,
+          };
+        } else {
+          userCustomOffset = { relX: newLeft, relY: newTop, isAbsolute: true };
+        }
+      }
+    },
+    true
+  );
+
+  document.addEventListener(
+    "mouseup",
+    () => {
+      if (isDraggingGrabber) {
+        isDraggingGrabber = false;
+        if (activeGrabberButton) {
+          activeGrabberButton.style.cursor = "pointer";
+        }
+        setTimeout(() => {
+          hasDragged = false;
+        }, 100);
+      }
+    },
+    true
+  );
+
   function scheduleHide() {
     clearTimeout(hideTimer);
     hideTimer = setTimeout(() => {
+      if (isDraggingGrabber) return;
       if (activeDropdown) return; // Never hide grabber if dropdown is actively open!
       if (activeGrabberButton && !activeGrabberButton.matches(":hover")) {
         activeGrabberButton.style.opacity = "0";
@@ -684,7 +775,8 @@
           if (
             activeGrabberButton &&
             activeGrabberButton.style.opacity === "0" &&
-            !activeDropdown
+            !activeDropdown &&
+            !isDraggingGrabber
           ) {
             activeGrabberButton.style.display = "none";
           }
@@ -694,7 +786,7 @@
   }
 
   function positionGrabber(video, container) {
-    if (isPermanentlyDismissed) return;
+    if (isPermanentlyDismissed || isDraggingGrabber) return;
     createVideoGrabber();
     ensureGrabberContainer();
 
@@ -712,6 +804,21 @@
       activeGrabberButton.style.position = "absolute";
       activeGrabberButton.style.top = "18px";
       activeGrabberButton.style.right = "18px";
+      activeGrabberButton.style.left = "auto";
+    } else if (userCustomOffset) {
+      activeGrabberButton.style.position = "fixed";
+      let top = 12;
+      let left = 12;
+      if (userCustomOffset.isAbsolute) {
+        top = Math.max(8, Math.min(window.innerHeight - 50, userCustomOffset.relY));
+        left = Math.max(8, Math.min(window.innerWidth - 180, userCustomOffset.relX));
+      } else {
+        top = Math.max(8, Math.min(window.innerHeight - 50, rect.top + userCustomOffset.relY));
+        left = Math.max(8, Math.min(window.innerWidth - 180, rect.left + userCustomOffset.relX));
+      }
+      activeGrabberButton.style.top = `${top}px`;
+      activeGrabberButton.style.left = `${left}px`;
+      activeGrabberButton.style.right = "auto";
     } else {
       activeGrabberButton.style.position = "fixed";
       const top = Math.max(
@@ -725,6 +832,7 @@
 
       activeGrabberButton.style.top = `${top}px`;
       activeGrabberButton.style.right = `${right}px`;
+      activeGrabberButton.style.left = "auto";
     }
 
     activeGrabberButton.style.display = "flex";

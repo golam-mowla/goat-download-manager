@@ -1045,10 +1045,33 @@ pub async fn start_download(
                 suffix_tag
             )
         };
-        cmd.args(["-o", &out_tmpl, "--windows-filenames", "--no-playlist", "--no-check-certificates", "--concurrent-fragments", "4"]);
+        let is_hls = options.url.contains(".m3u8")
+            || options.url.contains("kick.com")
+            || options.url.contains("twitch.tv");
 
-        // Resumable Part Files & Continue - Always resume from saved byte and enable MPEG-TS for HLS/Kick/Twitch
-        cmd.args(["-c", "--part", "--hls-use-mpegts"]);
+        if is_hls {
+            cmd.args([
+                "-o", &out_tmpl,
+                "--windows-filenames",
+                "--no-playlist",
+                "--no-check-certificates",
+                "--fragment-retries", "infinite",
+                "--skip-unavailable-fragments",
+                "-c",
+                "--part",
+                "--hls-use-mpegts",
+            ]);
+        } else {
+            cmd.args([
+                "-o", &out_tmpl,
+                "--windows-filenames",
+                "--no-playlist",
+                "--no-check-certificates",
+                "--concurrent-fragments", "4",
+                "-c",
+                "--part",
+            ]);
+        }
         if options.overwrite_files || is_clipping_active {
             cmd.arg("--force-overwrites");
         } else {
