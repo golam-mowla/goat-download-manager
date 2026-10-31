@@ -19,8 +19,11 @@ Integration of a high-performance, asynchronous BitTorrent client into Goat Down
   - Magnet URI parsing (xt infohash, dn display name, tr tracker list).
   - `.torrent` file parsing (metainfo, file tree, piece length, infohash).
   - Native file picker for `.torrent` files via Tauri Dialog plugin.
-  - Windows command-line args handler for `.torrent` files and `magnet:` links.
-  - Clipboard detection for `magnet:?xt=urn:btih:`.
+  - Windows command-line args handler for `.torrent` files and `magnet:` links with percent-encoding.
+  - Windows registry integration: `magnet://` URL protocol handler & `.torrent` file association (`GDM.Torrent`).
+  - Browser extension interception of `.torrent` file downloads and 1-click `magnet:` link triggers.
+  - Native window Drag & Drop support for `.torrent` files.
+  - Robust input sanitization: handles `@[path]`, surrounding quotes, brackets, and remote `.torrent` HTTP/HTTPS URLs.
 - [x] Torrent State Management:
   - States: Queued, Checking (hash verification), Downloading, Seeding, Paused, Stalled, Error.
   - Actions: Start, Pause, Resume, Remove (with or without files).

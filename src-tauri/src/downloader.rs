@@ -338,7 +338,7 @@ pub async fn execute_multithreaded_download(
     state: EngineState,
     task_id: String,
 ) -> Result<(), String> {
-    let (url, _filename, save_path, total_bytes, mut chunk_count) = {
+    let (url, _filename, save_path, mut total_bytes, mut chunk_count, is_resumable) = {
         let tasks = state.tasks.read().await;
         let task = tasks.get(&task_id).ok_or("Task not found")?;
         (
@@ -347,12 +347,20 @@ pub async fn execute_multithreaded_download(
             task.save_path.clone(),
             task.total_bytes,
             task.chunk_count,
+            task.is_resumable,
         )
     };
 
-    // If total_bytes is 0 or ranges unsupported, force single stream
-    if total_bytes < 1024 * 1024 || chunk_count <= 1 {
+    // If total_bytes is 0 (unknown size) or ranges unsupported, force single stream
+    if total_bytes == 0 || !is_resumable || chunk_count <= 1 {
         chunk_count = 1;
+        // Update task's chunk_count so UI doesn't render 16 fake parallel streams
+        let mut tasks = state.tasks.write().await;
+        if let Some(t) = tasks.get_mut(&task_id) {
+            t.chunk_count = 1;
+            let _ = app.emit("download-progress", t.clone());
+            let _ = app.emit("gdm://progress", t.clone());
+        }
     }
 
     let temp_dir = std::env::temp_dir().join(format!("gdm_chunks_{}", task_id));
@@ -374,21 +382,26 @@ pub async fn execute_multithreaded_download(
     }
 
     // Initialize chunks
-    let chunk_size = if total_bytes > 0 {
+    let chunk_size = if total_bytes > 0 && chunk_count > 1 {
         total_bytes / chunk_count as u64
     } else {
         0
     };
 
     let mut chunk_ranges: Vec<(usize, u64, u64)> = Vec::new();
-    for i in 0..chunk_count {
-        let start = i as u64 * chunk_size;
-        let end = if i == chunk_count - 1 {
-            total_bytes.saturating_sub(1)
-        } else {
-            (i as u64 + 1) * chunk_size - 1
-        };
-        chunk_ranges.push((i, start, end));
+    if total_bytes == 0 || chunk_count <= 1 {
+        // Single unbounded stream or whole file (end = total_bytes or 0 for unknown)
+        chunk_ranges.push((0, 0, if total_bytes > 0 { total_bytes.saturating_sub(1) } else { 0 }));
+    } else {
+        for i in 0..chunk_count {
+            let start = i as u64 * chunk_size;
+            let end = if i == chunk_count - 1 {
+                total_bytes.saturating_sub(1)
+            } else {
+                (i as u64 + 1) * chunk_size - 1
+            };
+            chunk_ranges.push((i, start, end));
+        }
     }
 
     let mut initial_downloaded = 0u64;
@@ -402,17 +415,24 @@ pub async fn execute_multithreaded_download(
     let shared_downloaded = Arc::new(AtomicU64::new(initial_downloaded));
     let mut chunk_join_handles = Vec::new();
 
+    let app_handle_for_chunks = app.clone();
+    let state_for_chunks = state.clone();
+    let task_id_for_chunks = task_id.clone();
+
     for (index, start, end) in chunk_ranges {
         let client = state.client.clone();
         let url = url.clone();
         let part_file_path = temp_dir.join(format!("chunk_{}.part", index));
         let mut chunk_cancel = cancel_tx.subscribe();
         let shared_downloaded = shared_downloaded.clone();
+        let app_c = app_handle_for_chunks.clone();
+        let state_c = state_for_chunks.clone();
+        let tid_c = task_id_for_chunks.clone();
 
         let handle = tauri::async_runtime::spawn(async move {
             // Stagger parallel connections slightly to avoid server SYN flood / rate limiter kicks
             if index > 0 {
-                tokio::time::sleep(Duration::from_millis((index as u64) * 20)).await;
+                tokio::time::sleep(Duration::from_millis((index as u64) * 25)).await;
             }
 
             let mut retries = 0;
@@ -428,7 +448,8 @@ pub async fn execute_multithreaded_download(
                     .map_err(|e| e.to_string())?;
 
                 let current_len = file.metadata().await.map(|m| m.len()).unwrap_or(0);
-                let target_chunk_len = if end >= start { end - start + 1 } else { 0 };
+                // Note: if end is 0 (unknown size), target_chunk_len is 0 (read until EOF)
+                let target_chunk_len = if end > 0 && end >= start { end - start + 1 } else { 0 };
 
                 if target_chunk_len > 0 && current_len >= target_chunk_len {
                     let _ = file.flush().await;
@@ -445,10 +466,26 @@ pub async fn execute_multithreaded_download(
 
                 let mut req = client.get(&url)
                     .header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
-                    .header("Accept", "*/*")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9")
                     .header("Accept-Encoding", "identity")
                     .header("Connection", "keep-alive")
-                    .header("Referer", &url);
+                    .header("Sec-Ch-Ua", "\"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"")
+                    .header("Sec-Ch-Ua-Mobile", "?0")
+                    .header("Sec-Ch-Ua-Platform", "\"Windows\"")
+                    .header("Sec-Fetch-Dest", "document")
+                    .header("Sec-Fetch-Mode", "navigate")
+                    .header("Sec-Fetch-Site", "cross-site")
+                    .header("Sec-Fetch-User", "?1")
+                    .header("Upgrade-Insecure-Requests", "1");
+
+                // Parse origin domain for Referer header
+                if let Ok(parsed) = reqwest::Url::parse(&url) {
+                    if let Some(host) = parsed.host_str() {
+                        let proto = parsed.scheme();
+                        req = req.header("Referer", format!("{}://{}/", proto, host));
+                    }
+                }
 
                 if end > 0 {
                     req = req.header(RANGE, format!("bytes={}-{}", chunk_start, end));
@@ -483,6 +520,23 @@ pub async fn execute_multithreaded_download(
                     }
                 };
 
+                // Check for dynamic Content-Length if task total_bytes was unknown (0)
+                if let Some(cl) = resp.content_length() {
+                    if cl > 0 {
+                        let mut tasks = state_c.tasks.write().await;
+                        if let Some(t) = tasks.get_mut(&tid_c) {
+                            if t.total_bytes == 0 {
+                                t.total_bytes = cl;
+                                if resp.status() == reqwest::StatusCode::PARTIAL_CONTENT || resp.headers().contains_key(ACCEPT_RANGES) {
+                                    t.is_resumable = true;
+                                }
+                                let _ = app_c.emit("download-progress", t.clone());
+                                let _ = app_c.emit("gdm://progress", t.clone());
+                            }
+                        }
+                    }
+                }
+
                 let mut writer = tokio::io::BufWriter::with_capacity(512 * 1024, file);
                 let mut stream_interrupted = false;
 
@@ -498,7 +552,8 @@ pub async fn execute_multithreaded_download(
                                     if let Err(e) = writer.write_all(&bytes).await {
                                         return Err(e.to_string());
                                     }
-                                    shared_downloaded.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+                                    let b_len = bytes.len() as u64;
+                                    shared_downloaded.fetch_add(b_len, Ordering::Relaxed);
                                     retries = 0;
                                 }
                                 Ok(None) => {

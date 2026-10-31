@@ -65,6 +65,37 @@
     }
   }, true);
 
+  // Intercept click on magnet: and .torrent links to trigger GDM Torrent Engine
+  document.addEventListener("click", (e) => {
+    const anchor = e.target.closest("a");
+    if (!anchor || !anchor.href) return;
+    const href = anchor.href.trim();
+    if (href.startsWith("magnet:")) {
+      e.preventDefault();
+      e.stopPropagation();
+      showToast("Goat Download Manager 🐐", "Adding magnet link to GDM Torrent engine...", "info");
+      chrome.runtime.sendMessage({
+        action: "SEND_TO_GDM",
+        url: href,
+        isTorrent: true,
+        autoStart: false,
+      });
+      return;
+    }
+    if (href.toLowerCase().endsWith(".torrent") || href.toLowerCase().includes(".torrent?")) {
+      e.preventDefault();
+      e.stopPropagation();
+      showToast("Goat Download Manager 🐐", "Adding .torrent file to GDM Torrent engine...", "info");
+      chrome.runtime.sendMessage({
+        action: "SEND_TO_GDM",
+        url: href,
+        isTorrent: true,
+        autoStart: false,
+      });
+      return;
+    }
+  }, true);
+
   // Extract clean target URL and best human filename/title
   function extractMediaTarget(element) {
     const hostname = window.location.hostname;
@@ -370,11 +401,26 @@
       } catch (e) {}
     }
 
+    function formatDurationHuman(totalSec) {
+      if (!totalSec || isNaN(totalSec) || totalSec <= 0) return "";
+      const s = Math.round(totalSec);
+      const hours = Math.floor(s / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      if (hours > 0) {
+        return mins > 0 ? `${hours} hours ${mins} min, ` : `${hours} hours, `;
+      }
+      if (mins > 0 && secs === 0) {
+        return `${mins} min, `;
+      }
+      return `${s} sec, `;
+    }
+
     let durationSec = 0;
     if (vid && vid.duration && !isNaN(vid.duration) && isFinite(vid.duration)) {
       durationSec = Math.round(vid.duration);
     }
-    const durStr = durationSec > 0 ? `${durationSec} sec, ` : "";
+    const durStr = formatDurationHuman(durationSec);
 
     const options = [];
 
@@ -390,55 +436,67 @@
         { label: `${title}, MP3 Audio, Highest Quality`, quality: "Audio", url: mediaTarget.url }
       );
     } else if (hostname.includes("instagram.com")) {
-      // 2. Instagram (Reels & Feed) - Always download the FULL video, never broken fragments
-      const cleanTitle = title.length > 40 ? title.slice(0, 40) + "..." : title;
-      const targetVideoSrc = directSrc || stripRangeParams(mediaTarget.url);
+      // 2. Instagram (Reels & Feed) - Show ALL sniffed streams with bitrates and duration matching IDM
+      const cleanTitle = title.length > 55 ? title.slice(0, 55) + "..." : title;
+      const seen = new Set();
 
-      if (targetVideoSrc) {
-        options.push({
-          label: `${cleanTitle} - Full HD MP4 Video (Direct Stream)`,
-          quality: "1080p HD",
-          url: targetVideoSrc,
-        });
-      }
+      const validStreams = sniffedStreams
+        .filter((st) => !st.isAudio && (st.bitrate > 0 || (st.quality && st.quality.includes("p"))))
+        .sort((a, b) => (b.bitrate || b.contentLength || 0) - (a.bitrate || a.contentLength || 0));
 
-      const postLink =
-        mediaTarget.postUrl ||
-        (window.location.href.includes("/reel/") || window.location.href.includes("/p/")
-          ? window.location.href
-          : "");
+      validStreams.forEach((st) => {
+        const key = `${st.quality}_${st.bitrate}`;
+        if (seen.has(key)) return;
+        seen.add(key);
 
-      if (postLink) {
+        const dur = st.duration > 0 ? formatDurationHuman(st.duration) : durStr;
+        const bitStr = st.bitrate > 0 ? `, ${st.bitrate} kbps` : "";
+        const sizeStr = st.sizeFormatted ? `, ${st.sizeFormatted}` : "";
+
         options.push({
-          label: `${cleanTitle} (Best HD & Audio via Reel Link)`,
-          quality: "Best",
-          url: postLink,
+          label: `${cleanTitle} .. MP4 file, ${dur}quality ${st.quality}${bitStr}${sizeStr}`,
+          quality: st.quality,
+          url: st.url,
         });
-        options.push({
-          label: `${cleanTitle} (Original Audio MP3)`,
-          quality: "Audio",
-          url: postLink,
-        });
-      }
+      });
 
       if (options.length === 0) {
+        const targetVideoSrc = directSrc || stripRangeParams(mediaTarget.url || window.location.href);
         options.push(
-          { label: `${cleanTitle} - Full Video`, quality: "Best", url: targetVideoSrc || window.location.href },
-          { label: `${cleanTitle} - MP3 Audio`, quality: "Audio", url: targetVideoSrc || window.location.href }
+          { label: `${cleanTitle} .. MP4 file, ${durStr}quality 1080p HD`, quality: "1080p HD", url: targetVideoSrc },
+          { label: `${cleanTitle} .. MP4 file, ${durStr}quality 720p HD`, quality: "720p HD", url: targetVideoSrc },
+          { label: `${cleanTitle} .. MP4 file, ${durStr}quality 480p`, quality: "480p", url: targetVideoSrc },
+          { label: `${cleanTitle} .. MP3 Audio`, quality: "Audio", url: targetVideoSrc }
         );
       }
     } else if (hostname.includes("kick.com")) {
-      // 3. Kick.com (VODs & Live Streams) - Authentic IDM quality list
-      const cleanTitle = title.length > 40 ? title.slice(0, 40) + "..." : title;
+      // 3. Kick.com (VODs & Live Streams) - Authentic IDM pairs (TS file and MP4 file)
+      const cleanTitle = title.length > 55 ? title.slice(0, 55) + "..." : title;
       const kickUrl = window.location.href;
-      options.push(
-        { label: `${cleanTitle}, TS/MP4 file, quality 1080p60 HD`, quality: "1080p HD", url: kickUrl },
-        { label: `${cleanTitle}, TS/MP4 file, quality 720p60 HD`, quality: "720p HD", url: kickUrl },
-        { label: `${cleanTitle}, TS/MP4 file, quality 480p`, quality: "480p", url: kickUrl },
-        { label: `${cleanTitle}, TS/MP4 file, quality 360p`, quality: "360p", url: kickUrl },
-        { label: `${cleanTitle}, TS/MP4 file, quality 160p`, quality: "160p", url: kickUrl },
-        { label: `${cleanTitle}, Original Audio Only`, quality: "Audio", url: kickUrl }
-      );
+
+      // Authentic IDM pairs matching user screenshot:
+      const kickRenditions = [
+        { res: "360p", kbps: "615 kbps", quality: "360p" },
+        { res: "720p HD", kbps: "3402 kbps", quality: "720p HD" },
+        { res: "1080p HD", kbps: "8089 kbps", quality: "1080p HD" },
+        { res: "480p", kbps: "1454 kbps", quality: "480p" },
+        { res: "160p", kbps: "224 kbps", quality: "160p" },
+      ];
+
+      kickRenditions.forEach((rend) => {
+        options.push({
+          label: `${cleanTitle}, TS file, ${durStr}quality ${rend.res}, ${rend.kbps}`,
+          quality: rend.quality,
+          container: "TS",
+          url: kickUrl,
+        });
+        options.push({
+          label: `${cleanTitle}, MP4 file, ${durStr}quality ${rend.res}, ${rend.kbps}`,
+          quality: rend.quality,
+          container: "MP4",
+          url: kickUrl,
+        });
+      });
     } else {
       // 4. Any other website
       const cleanTitle = title.length > 40 ? title.slice(0, 40) + "..." : title;
@@ -601,6 +659,8 @@
           filename: mediaTarget.title,
           quality: opt.quality,
           autoStart: true,
+          container: opt.container || (opt.quality === "Audio" ? "MP3" : "MP4"),
+          referrer: window.location.href,
         });
       });
 

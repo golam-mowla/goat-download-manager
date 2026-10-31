@@ -16,7 +16,8 @@
     "scripting",
     "notifications",
     "storage",
-    "webRequest"
+    "webRequest",
+    "cookies"
   ],
   "host_permissions": [
     "http://127.0.0.1/*",

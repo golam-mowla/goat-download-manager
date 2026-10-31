@@ -84,14 +84,39 @@ pub async fn add_torrent(
 ) -> Result<TorrentDetailsResponse, String> {
     let api = get_or_init_torrent_api(&state, request.save_folder.clone()).await?;
 
-    let add_torrent = if request.source.starts_with("magnet:") {
-        AddTorrent::from_url(&request.source)
+    // Clean source string: strip @[, ], quotes, backticks, whitespace
+    let mut clean_source = request.source.trim().to_string();
+    if clean_source.starts_with("@[") && clean_source.ends_with(']') {
+        clean_source = clean_source[2..clean_source.len() - 1].trim().to_string();
+    }
+    clean_source = clean_source
+        .trim_matches(|c| c == '"' || c == '\'' || c == '`' || c == '[' || c == ']')
+        .trim()
+        .to_string();
+
+    let add_torrent = if clean_source.starts_with("magnet:") {
+        AddTorrent::from_url(&clean_source)
+    } else if clean_source.starts_with("http://") || clean_source.starts_with("https://") {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let bytes = client
+            .get(&clean_source)
+            .header(reqwest::header::USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .send()
+            .await
+            .map_err(|e| format!("Failed to fetch remote torrent file: {}", e))?
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read remote torrent file bytes: {}", e))?;
+        AddTorrent::from_bytes(bytes.to_vec())
     } else {
-        let p = PathBuf::from(&request.source);
+        let p = PathBuf::from(&clean_source);
         if !p.exists() {
-            return Err(format!("File does not exist: {}", request.source));
+            return Err(format!("Torrent file does not exist: {}", clean_source));
         }
-        let bytes = std::fs::read(&p).map_err(|e| format!("Failed to read file: {}", e))?;
+        let bytes = std::fs::read(&p).map_err(|e| format!("Failed to read torrent file: {}", e))?;
         AddTorrent::from_bytes(bytes)
     };
 

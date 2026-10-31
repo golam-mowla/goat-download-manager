@@ -64,6 +64,7 @@ export const App: React.FC = () => {
   defaultDirRef.current = defaultDir;
   const handleAddMediaDownloadRef = useRef<(options: any) => Promise<void>>(() => Promise.resolve());
   const handleAddDirectDownloadRef = useRef<(url: string, savePath: string, filename: string, connections: number) => Promise<void>>(() => Promise.resolve());
+  const handleAddTorrentDownloadRef = useRef<(urlOrPath: string, savePath: string, sequential: boolean) => Promise<void>>(() => Promise.resolve());
 
   useEffect(() => {
     if (theme === "dark") {
@@ -229,6 +230,7 @@ export const App: React.FC = () => {
       let targetFilename = "";
       let targetQuality = "";
       let autoStart = false;
+      let isTorrent = false;
       if (typeof raw === "string") {
         targetUrl = raw;
       } else if (raw && typeof raw === "object" && raw.url) {
@@ -242,11 +244,29 @@ export const App: React.FC = () => {
         if (raw.autoStart || raw.autostart) {
           autoStart = true;
         }
+        if (raw.isTorrent) {
+          isTorrent = true;
+        }
       }
       if (targetUrl && targetUrl.trim()) {
-        const clean = cleanDownloadUrl(targetUrl.trim());
+        let clean = cleanDownloadUrl(targetUrl.trim());
+        if (clean.startsWith("@[") && clean.endsWith("]")) {
+          clean = clean.slice(2, -1).trim();
+        }
+        clean = clean.replace(/^["'`[]+|["'`\]]+$/g, "").trim();
+
+        const lower = clean.toLowerCase();
+        if (isTorrent || lower.startsWith("magnet:") || lower.endsWith(".torrent") || lower.includes(".torrent")) {
+          if (autoStart) {
+            handleAddTorrentDownloadRef.current(clean, defaultDirRef.current, false);
+          } else {
+            setModalInitialUrl(clean);
+            setIsAddModalOpen(true);
+          }
+          return;
+        }
+
         if (autoStart) {
-          const lower = clean.toLowerCase();
           const isDirectFile =
             (lower.endsWith(".zip") ||
               lower.endsWith(".rar") ||
@@ -691,8 +711,41 @@ export const App: React.FC = () => {
   useEffect(() => {
     handleAddDirectDownloadRef.current = handleAddDirectDownload;
     handleAddMediaDownloadRef.current = handleAddMediaDownload;
+    handleAddTorrentDownloadRef.current = handleAddTorrentDownload;
     defaultDirRef.current = defaultDir;
   });
+
+  // Native window drag-and-drop listener for .torrent files
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const path = (file as any).path || file.name;
+          if (path && (path.toLowerCase().endsWith(".torrent") || path.toLowerCase().includes(".torrent"))) {
+            setModalInitialUrl(path);
+            setIsAddModalOpen(true);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("drop", handleDrop);
+    return () => {
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("drop", handleDrop);
+    };
+  }, []);
 
   // Category counts
   const categoryCounts = useMemo(() => {

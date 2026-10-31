@@ -96,9 +96,19 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   };
 
   const handleUrlDetection = (inputUrl: string) => {
-    const lower = inputUrl.toLowerCase().trim();
+    let clean = inputUrl.trim();
+    if (clean.startsWith("@[") && clean.endsWith("]")) {
+      clean = clean.slice(2, -1).trim();
+    }
+    clean = clean.replace(/^["'`[]+|["'`\]]+$/g, "").trim();
 
-    if (lower.startsWith("magnet:") || lower.endsWith(".torrent")) {
+    const lower = clean.toLowerCase();
+
+    if (
+      lower.startsWith("magnet:") ||
+      lower.endsWith(".torrent") ||
+      lower.includes(".torrent")
+    ) {
       setTab("torrent");
       return;
     }
@@ -315,7 +325,11 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   };
 
   const handleTorrentSubmit = async () => {
-    const cleanUrl = url.trim();
+    let cleanUrl = url.trim();
+    if (cleanUrl.startsWith("@[") && cleanUrl.endsWith("]")) {
+      cleanUrl = cleanUrl.slice(2, -1).trim();
+    }
+    cleanUrl = cleanUrl.replace(/^["'`[]+|["'`\]]+$/g, "").trim();
     if (!cleanUrl) return;
     try {
       setSubmitting(true);

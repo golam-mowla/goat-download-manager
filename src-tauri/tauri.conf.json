@@ -37,6 +37,14 @@
       "icons/icon.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["torrent"],
+        "name": "BitTorrent Seedfile",
+        "description": "BitTorrent Seedfile",
+        "role": "Viewer"
+      }
     ]
   }
 }

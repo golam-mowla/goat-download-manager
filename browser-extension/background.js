@@ -6,6 +6,8 @@ const GDM_BRIDGE_URL = `http://127.0.0.1:${GDM_BRIDGE_PORT}`;
 
 // Interceptable file extensions for IDM-style capture
 const INTERCEPT_EXTENSIONS = new Set([
+  // Torrent files
+  "torrent",
   // Archives
   "zip", "rar", "7z", "tar", "gz", "bz2", "xz", "iso", "tgz",
   // Executables & Installers
@@ -128,7 +130,11 @@ if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
               }
               if (meta.vencode_tag) {
                 const tag = meta.vencode_tag.toLowerCase();
-                if (tag.includes("1080") || tag.includes("1920")) quality = "1080p HD";
+                const m = tag.match(/(\d+)p/);
+                if (m) {
+                  const h = parseInt(m[1], 10);
+                  quality = h >= 720 ? `${h}p HD` : `${h}p`;
+                } else if (tag.includes("1080") || tag.includes("1920")) quality = "1080p HD";
                 else if (tag.includes("720") || tag.includes("1280")) quality = "720p HD";
                 else if (tag.includes("480")) quality = "480p";
                 else if (tag.includes("360")) quality = "360p";
@@ -156,25 +162,30 @@ if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
             else if (urlLower.includes("480")) quality = "480p";
           }
 
+          let effectiveLength = totalLength;
+          if ((!effectiveLength || effectiveLength < 100000) && bitrateKbps > 0 && durationS > 0) {
+            effectiveLength = Math.round((bitrateKbps * 1000 * durationS) / 8);
+          }
+
           if (streams.has(cleanUrl)) {
             const existing = streams.get(cleanUrl);
-            if (totalLength > existing.contentLength) {
-              existing.contentLength = totalLength;
-              existing.sizeFormatted = formatBytes(totalLength);
+            if (effectiveLength > existing.contentLength) {
+              existing.contentLength = effectiveLength;
+              existing.sizeFormatted = formatBytes(effectiveLength);
             }
             if (!existing.quality && quality) existing.quality = quality;
             if (!existing.bitrate && bitrateKbps) existing.bitrate = bitrateKbps;
           } else {
             // Skip tiny sub-100KB fragments if not a playlist or audio
-            if (totalLength > 0 && totalLength < 100000 && !urlLower.includes(".m3u8") && !isAudio && details.url !== cleanUrl) {
+            if (effectiveLength > 0 && effectiveLength < 100000 && !urlLower.includes(".m3u8") && !isAudio && details.url !== cleanUrl) {
               return;
             }
 
             const streamInfo = {
               url: cleanUrl,
               contentType,
-              contentLength: totalLength,
-              sizeFormatted: formatBytes(totalLength),
+              contentLength: effectiveLength,
+              sizeFormatted: formatBytes(effectiveLength),
               quality: quality || (isAudio ? "Audio Only" : "HD Video"),
               bitrate: bitrateKbps,
               duration: durationS,
@@ -240,7 +251,12 @@ async function handleDownloadInterception(downloadItem, suggest) {
       } catch (e) {}
     }
 
-    if (INTERCEPT_EXTENSIONS.has(ext)) {
+    const isTorrent =
+      ext === "torrent" ||
+      (downloadItem.mime && downloadItem.mime.toLowerCase().includes("bittorrent")) ||
+      rawUrl.toLowerCase().includes(".torrent");
+
+    if (INTERCEPT_EXTENSIONS.has(ext) || isTorrent) {
       const storage = await chrome.storage.local.get(["interceptDownloads"]);
       if (storage.interceptDownloads === false) {
         return false; // User disabled interception in popup/settings
@@ -261,13 +277,16 @@ async function handleDownloadInterception(downloadItem, suggest) {
         type: "basic",
         iconUrl: "icons/icon128.png",
         title: "Goat Download Manager 🐐",
-        message: `Intercepted high-speed download:\n${downloadItem.filename || ext.toUpperCase() + " file"}`,
+        message: isTorrent
+          ? `Intercepted BitTorrent download:\n${downloadItem.filename || "Torrent file"}`
+          : `Intercepted high-speed download:\n${downloadItem.filename || ext.toUpperCase() + " file"}`,
         priority: 2,
       });
 
       // Forward to GDM Desktop Engine
       const cleanFilename = downloadItem.filename ? downloadItem.filename.replace(/^.*[\\\/]/, "") : "";
-      await sendUrlToGdm(rawUrl, null, cleanFilename, null, false);
+      const referrer = downloadItem.referrer || "";
+      await sendUrlToGdm(rawUrl, null, cleanFilename, null, false, isTorrent, referrer);
       return true;
     }
   } catch (err) {
@@ -345,7 +364,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 // Send URL to GDM Desktop App
-async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart = false) {
+async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart = false, isTorrent = false, referrer = "") {
   let cleanUrl = normalizeMediaUrl((mediaUrl || "").trim());
   if (!cleanUrl) return;
 
@@ -366,7 +385,11 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart 
       await chrome.tabs.sendMessage(effectiveTabId, {
         action: "SHOW_TOAST",
         title: "Goat Download Manager 🐐",
-        message: quality ? `Sending ${quality} stream to GDM Engine...` : "Sending link to GDM engine...",
+        message: isTorrent
+          ? "Adding torrent to GDM engine..."
+          : quality
+          ? `Sending ${quality} stream to GDM Engine...`
+          : "Sending link to GDM engine...",
         status: "info",
       });
     } catch {}
@@ -380,7 +403,9 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart 
     const filenameParam = customFilename ? `&filename=${encodeURIComponent(customFilename)}` : "";
     const qualityParam = quality ? `&quality=${encodeURIComponent(quality)}` : "";
     const autoParam = autoStart ? `&autostart=true` : "";
-    const bridgeEndpoint = `${GDM_BRIDGE_URL}/open?url=${encodeURIComponent(cleanUrl)}${filenameParam}${qualityParam}${autoParam}`;
+    const torrentParam = isTorrent ? `&isTorrent=true` : "";
+    const referrerParam = referrer ? `&referrer=${encodeURIComponent(referrer)}` : "";
+    const bridgeEndpoint = `${GDM_BRIDGE_URL}/open?url=${encodeURIComponent(cleanUrl)}${filenameParam}${qualityParam}${autoParam}${torrentParam}${referrerParam}`;
     const resp = await fetch(bridgeEndpoint, {
       method: "GET",
       signal: controller.signal,
@@ -393,7 +418,11 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart 
           await chrome.tabs.sendMessage(effectiveTabId, {
             action: "SHOW_TOAST",
             title: "Goat Download Manager 🐐",
-            message: quality ? `${quality} Download started in GDM!` : "Link sent to GDM! Download starting...",
+            message: isTorrent
+              ? "Torrent added in GDM!"
+              : quality
+              ? `${quality} Download started in GDM!`
+              : "Link sent to GDM! Download starting...",
             status: "success",
           });
         } catch {}
@@ -408,7 +437,8 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart 
   const filenameParam = customFilename ? `&filename=${encodeURIComponent(customFilename)}` : "";
   const qualityParam = quality ? `&quality=${encodeURIComponent(quality)}` : "";
   const autoParam = autoStart ? `&autostart=true` : "";
-  const protocolUrl = `gdm://open?url=${encodeURIComponent(cleanUrl)}${filenameParam}${qualityParam}${autoParam}`;
+  const torrentParam = isTorrent ? `&isTorrent=true` : "";
+  const protocolUrl = `gdm://open?url=${encodeURIComponent(cleanUrl)}${filenameParam}${qualityParam}${autoParam}${torrentParam}`;
 
   if (effectiveTabId) {
     try {
@@ -451,7 +481,15 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "SEND_TO_PARROT" || request.action === "SEND_TO_GDM") {
     const tabId = sender && sender.tab ? sender.tab.id : null;
-    sendUrlToGdm(request.url, tabId, request.filename, request.quality, Boolean(request.autoStart)).then((res) => sendResponse(res));
+    sendUrlToGdm(
+      request.url,
+      tabId,
+      request.filename,
+      request.quality,
+      Boolean(request.autoStart),
+      Boolean(request.isTorrent),
+      request.referrer || ""
+    ).then((res) => sendResponse(res));
     return true;
   }
 

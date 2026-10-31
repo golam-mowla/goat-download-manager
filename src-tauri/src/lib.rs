@@ -63,7 +63,11 @@ async fn start_http_download(
 
     let save_path = PathBuf::from(&resolved_folder).join(&resolved_name).to_string_lossy().to_string();
     let total_bytes = meta.total_size.unwrap_or(0);
-    let chunks = chunk_count.unwrap_or(if meta.supports_ranges && total_bytes > 2 * 1024 * 1024 { 8 } else { 1 });
+    let chunks = if !meta.supports_ranges || total_bytes == 0 {
+        1
+    } else {
+        chunk_count.unwrap_or(if total_bytes > 2 * 1024 * 1024 { 8 } else { 1 }).clamp(1, 32)
+    };
     let category = downloader::detect_category_with_mime(&resolved_name, meta.content_type.as_deref());
 
     let task_id = uuid::Uuid::new_v4().to_string();
@@ -191,6 +195,21 @@ fn dirs_or_default_downloads() -> String {
 // Protocol & Local Bridge Server (for Browser Extension Interception)
 // ---------------------------------------------------------------------------
 
+pub fn url_encode(input: &str) -> String {
+    let mut encoded = String::with_capacity(input.len() * 2);
+    for b in input.bytes() {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(b as char);
+            }
+            _ => {
+                encoded.push_str(&format!("%{:02X}", b));
+            }
+        }
+    }
+    encoded
+}
+
 pub fn decode_percent_encoded(input: &str) -> String {
     let mut bytes = Vec::new();
     let mut chars = input.bytes();
@@ -267,6 +286,7 @@ async fn start_local_bridge(app_handle: AppHandle) {
                     let mut target_url = None;
                     let mut target_filename = None;
                     let mut target_quality = None;
+                    let mut is_torrent = false;
                     let mut auto_start = false;
                     if let Some(idx) = req_str.find("/open?") {
                         let query_str = &req_str[idx + 6..];
@@ -282,6 +302,8 @@ async fn start_local_bridge(app_handle: AppHandle) {
                                 target_quality = Some(decode_percent_encoded(&part[8..]));
                             } else if part.starts_with("autostart=") {
                                 auto_start = &part[10..] == "true" || &part[10..] == "1";
+                            } else if part.starts_with("isTorrent=") {
+                                is_torrent = &part[10..] == "true" || &part[10..] == "1";
                             }
                         }
                     }
@@ -289,11 +311,16 @@ async fn start_local_bridge(app_handle: AppHandle) {
                     if let Some(url) = target_url {
                         let clean = url.trim().to_string();
                         if !clean.is_empty() {
+                            let is_detected_torrent = is_torrent
+                                || clean.starts_with("magnet:")
+                                || clean.ends_with(".torrent")
+                                || clean.contains(".torrent");
                             let payload = serde_json::json!({
                                 "url": clean,
                                 "filename": target_filename,
                                 "quality": target_quality,
-                                "autoStart": auto_start
+                                "autoStart": auto_start,
+                                "isTorrent": is_detected_torrent
                             });
                             let _ = handle.emit("open-url", payload.clone());
                             let _ = handle.emit("gdm://open-url", payload);
@@ -358,6 +385,34 @@ fn register_windows_protocols() {
             .args(["add", "HKCU\\Software\\Classes\\parrot\\shell\\open\\command", "/ve", "/d", &cmd, "/f"])
             .creation_flags(CREATE_NO_WINDOW)
             .status();
+
+        // Register magnet:// protocol handler for BitTorrent
+        let _ = Command::new("reg")
+            .args(["add", "HKCU\\Software\\Classes\\magnet", "/ve", "/d", "URL:BitTorrent Magnet Link", "/f"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+        let _ = Command::new("reg")
+            .args(["add", "HKCU\\Software\\Classes\\magnet", "/v", "URL Protocol", "/d", "", "/f"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+        let _ = Command::new("reg")
+            .args(["add", "HKCU\\Software\\Classes\\magnet\\shell\\open\\command", "/ve", "/d", &cmd, "/f"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+
+        // Register .torrent file association
+        let _ = Command::new("reg")
+            .args(["add", "HKCU\\Software\\Classes\\.torrent", "/ve", "/d", "GDM.Torrent", "/f"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+        let _ = Command::new("reg")
+            .args(["add", "HKCU\\Software\\Classes\\GDM.Torrent", "/ve", "/d", "Torrent File", "/f"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+        let _ = Command::new("reg")
+            .args(["add", "HKCU\\Software\\Classes\\GDM.Torrent\\shell\\open\\command", "/ve", "/d", &cmd, "/f"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
     }
 }
 
@@ -392,7 +447,13 @@ pub fn run() {
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
         for arg in &args[1..] {
-            let trimmed = arg.trim();
+            let mut trimmed = arg.trim();
+            if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
+                trimmed = &trimmed[1..trimmed.len() - 1].trim();
+            }
+            if trimmed.starts_with("@[") && trimmed.ends_with(']') && trimmed.len() >= 3 {
+                trimmed = &trimmed[2..trimmed.len() - 1].trim();
+            }
             if trimmed.starts_with("gdm://") || trimmed.starts_with("parrot://") || trimmed.starts_with("gmdownloader://") {
                 let without_proto = if trimmed.starts_with("gdm://") {
                     &trimmed["gdm://".len()..]
@@ -415,8 +476,10 @@ pub fn run() {
                     pending_arg_url = Some(decode_percent_encoded(&without_proto[pos + 5..]));
                     break;
                 }
-            } else if trimmed.starts_with("magnet:") || trimmed.ends_with(".torrent") || trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-                pending_arg_req = Some(format!("open?url={}", trimmed));
+            } else if trimmed.starts_with("magnet:") || trimmed.ends_with(".torrent") || trimmed.contains(".torrent") || trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+                let is_torrent = trimmed.starts_with("magnet:") || trimmed.ends_with(".torrent") || trimmed.contains(".torrent");
+                let torrent_param = if is_torrent { "&isTorrent=true" } else { "" };
+                pending_arg_req = Some(format!("open?url={}{}", url_encode(trimmed), torrent_param));
                 pending_arg_url = Some(trimmed.to_string());
                 break;
             }
