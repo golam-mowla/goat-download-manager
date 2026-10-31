@@ -7,8 +7,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use librqbit::api::{Api, TorrentDetailsResponse, TorrentIdOrHash};
-use librqbit::session::{AddTorrent, AddTorrentOptions, AddTorrentResponse, Session, SessionOptions};
-use librqbit::torrent_state::peer::stats::snapshot::PeerStatsSnapshot;
+use librqbit::http_api_types::{PeerStatsFilter, PeerStatsSnapshot};
+use librqbit::{AddTorrent, AddTorrentOptions, Session, SessionOptions, TorrentStatsState};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 
@@ -23,7 +23,7 @@ pub struct AddTorrentRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorrentPiecesInfo {
     pub total_pieces: u32,
-    pub pieces_bitfield: String, // base64 or hex of have pieces
+    pub pieces_bitfield: String, // hex of have pieces
     pub have_pieces: u32,
 }
 
@@ -48,24 +48,24 @@ pub async fn get_or_init_torrent_api(
         return Ok(api.clone());
     }
 
-    let save_dir = default_dir.unwrap_or_else(|| {
-        let home = std::env::var("USERPROFILE")
-            .or_else(|_| std::env::var("HOME"))
-            .unwrap_or_else(|_| ".".to_string());
-        format!("{}/Downloads", home)
-    });
-
-    let _ = std::fs::create_dir_all(&save_dir);
+    let download_dir = if let Some(d) = default_dir {
+        PathBuf::from(d)
+    } else if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        PathBuf::from(user_profile).join("Downloads")
+    } else if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join("Downloads")
+    } else {
+        std::env::temp_dir()
+    };
 
     let session_opts = SessionOptions {
         disable_dht: false,
-        fastresume: true,
         ..Default::default()
     };
 
-    let session = Session::new_with_opts(PathBuf::from(save_dir), session_opts)
+    let session = Session::new_with_opts(download_dir, session_opts)
         .await
-        .map_err(|e| format!("Failed to initialize BitTorrent engine: {}", e))?;
+        .map_err(|e| format!("Failed to create BitTorrent session: {}", e))?;
 
     let api = Api::new(session, None);
     *guard = Some(api.clone());
@@ -73,7 +73,7 @@ pub async fn get_or_init_torrent_api(
 }
 
 // ---------------------------------------------------------------------------
-// Command 1: Add Torrent (Magnet or .torrent)
+// Command 1: Add Torrent (via Magnet link or .torrent file bytes)
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
@@ -84,8 +84,7 @@ pub async fn add_torrent(
 ) -> Result<TorrentDetailsResponse, String> {
     let api = get_or_init_torrent_api(&state, request.save_folder.clone()).await?;
 
-    let is_magnet = request.source.starts_with("magnet:");
-    let add_torrent = if is_magnet {
+    let add_torrent = if request.source.starts_with("magnet:") {
         AddTorrent::from_url(&request.source)
     } else {
         let p = PathBuf::from(&request.source);
@@ -132,8 +131,12 @@ pub async fn add_torrent(
             let stats = current_details.stats.as_ref();
             let live = stats.and_then(|s| s.live.as_ref());
 
-            let downloaded = live.map(|l| l.snapshot.downloaded_bytes).unwrap_or(0);
-            let total = live.map(|l| l.snapshot.total_bytes).unwrap_or(0);
+            let downloaded = live.map(|l| l.snapshot.downloaded_and_checked_bytes).unwrap_or(0);
+            let total: u64 = current_details
+                .files
+                .as_ref()
+                .map(|files| files.iter().map(|f| f.length).sum())
+                .unwrap_or(0);
             let down_speed = live.map(|l| l.download_speed.mbps * 1024.0 * 1024.0 / 8.0).unwrap_or(0.0) as u64;
             let up_speed = live.map(|l| l.upload_speed.mbps * 1024.0 * 1024.0 / 8.0).unwrap_or(0.0) as u64;
 
@@ -143,7 +146,10 @@ pub async fn add_torrent(
                 0.0
             };
 
-            let is_paused = stats.map(|s| s.state.is_paused()).unwrap_or(false);
+            let is_paused = matches!(
+                stats.map(|s| &s.state),
+                Some(TorrentStatsState::Paused | TorrentStatsState::Initializing { paused: true })
+            );
             let status = if is_paused {
                 "paused"
             } else if pct >= 100.0 {
@@ -210,6 +216,7 @@ pub async fn pause_torrent(
         .map_err(|e| format!("Invalid torrent ID/hash: {}", e))?;
     api.api_torrent_action_pause(target)
         .await
+        .map(|_| ())
         .map_err(|e| format!("Failed to pause torrent: {}", e))
 }
 
@@ -227,6 +234,7 @@ pub async fn resume_torrent(
         .map_err(|e| format!("Invalid torrent ID/hash: {}", e))?;
     api.api_torrent_action_start(target)
         .await
+        .map(|_| ())
         .map_err(|e| format!("Failed to resume torrent: {}", e))
 }
 
@@ -246,10 +254,12 @@ pub async fn remove_torrent(
     if delete_files {
         api.api_torrent_action_delete(target)
             .await
+            .map(|_| ())
             .map_err(|e| format!("Failed to delete torrent: {}", e))?;
     } else {
         api.api_torrent_action_forget(target)
             .await
+            .map(|_| ())
             .map_err(|e| format!("Failed to forget torrent: {}", e))?;
     }
     Ok(())
@@ -267,7 +277,7 @@ pub async fn get_torrent_peers(
     let api = get_or_init_torrent_api(&state, None).await?;
     let target = TorrentIdOrHash::parse(&id_or_hash)
         .map_err(|e| format!("Invalid torrent ID/hash: {}", e))?;
-    api.api_peer_stats(target, None)
+    api.api_peer_stats(target, PeerStatsFilter::default())
         .map_err(|e| format!("Failed to get peer stats: {}", e))
 }
 
@@ -288,8 +298,11 @@ pub async fn get_torrent_pieces(
         .map_err(|e| format!("Failed to dump pieces: {}", e))?;
 
     let have_count = bf.count_ones() as u32;
-    let bytes: &[u8] = bf.as_raw_slice();
-    let hex_bitfield = hex::encode(bytes);
+    let hex_bitfield: String = bf
+        .as_raw_slice()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect();
 
     Ok(TorrentPiecesInfo {
         total_pieces: total,
