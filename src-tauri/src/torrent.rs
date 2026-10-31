@@ -59,7 +59,7 @@ pub async fn get_or_init_torrent_api(
     };
 
     let session_opts = SessionOptions {
-        disable_dht: false,
+        fastresume: true,
         ..Default::default()
     };
 
@@ -168,6 +168,8 @@ pub async fn add_torrent(
                     "text": format!("{:.1}% of {}", pct, format_bytes(total)),
                     "speed": format!("{}/s", format_bytes(down_speed)),
                     "speed_formatted": format!("{}/s", format_bytes(down_speed)),
+                    "up_speed": format!("{}/s", format_bytes(up_speed)),
+                    "up_speed_formatted": format!("{}/s", format_bytes(up_speed)),
                     "eta": "--",
                     "eta_formatted": "--",
                     "total_bytes": total,
