@@ -19,6 +19,26 @@ import { PreferencesModal } from "./components/PreferencesModal";
 import { IdmDownloadDialog } from "./components/IdmDownloadDialog";
 import { DownloadTask } from "./types";
 
+function cleanDownloadUrl(url: string): string {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    let changed = false;
+    if (u.searchParams.has("bytestart") || u.searchParams.has("byteend")) {
+      u.searchParams.delete("bytestart");
+      u.searchParams.delete("byteend");
+      changed = true;
+    }
+    if (u.searchParams.has("range")) {
+      u.searchParams.delete("range");
+      changed = true;
+    }
+    return changed ? u.toString() : url;
+  } catch {
+    return url;
+  }
+}
+
 export const App: React.FC = () => {
   // State
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
@@ -222,7 +242,7 @@ export const App: React.FC = () => {
         }
       }
       if (targetUrl && targetUrl.trim()) {
-        const clean = targetUrl.trim();
+        const clean = cleanDownloadUrl(targetUrl.trim());
         if (autoStart) {
           const lower = clean.toLowerCase();
           const isDirectFile =

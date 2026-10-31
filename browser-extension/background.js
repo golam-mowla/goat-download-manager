@@ -35,6 +35,26 @@ function formatBytes(bytes) {
 // ---------------------------------------------------------------------------
 // 1. Passive Media Stream Sniffing (IDM method: listens to HTTP response headers)
 // ---------------------------------------------------------------------------
+function normalizeMediaUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return rawUrl;
+  try {
+    const parsed = new URL(rawUrl);
+    let changed = false;
+    if (parsed.searchParams.has("bytestart") || parsed.searchParams.has("byteend")) {
+      parsed.searchParams.delete("bytestart");
+      parsed.searchParams.delete("byteend");
+      changed = true;
+    }
+    if (parsed.searchParams.has("range")) {
+      parsed.searchParams.delete("range");
+      changed = true;
+    }
+    return changed ? parsed.toString() : rawUrl;
+  } catch (e) {
+    return rawUrl;
+  }
+}
+
 if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
   chrome.webRequest.onHeadersReceived.addListener(
     (details) => {
@@ -45,14 +65,24 @@ if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
 
         let contentType = "";
         let contentLength = 0;
+        let totalLength = 0;
 
         for (const h of details.responseHeaders) {
           const name = h.name.toLowerCase();
           if (name === "content-type") contentType = h.value.toLowerCase();
           if (name === "content-length") contentLength = parseInt(h.value, 10) || 0;
+          if (name === "content-range") {
+            const m = h.value.match(/\/(\d+)/);
+            if (m) {
+              totalLength = parseInt(m[1], 10) || 0;
+            }
+          }
         }
+        if (totalLength === 0) totalLength = contentLength;
 
-        const urlLower = details.url.toLowerCase();
+        const cleanUrl = normalizeMediaUrl(details.url);
+        const urlLower = cleanUrl.toLowerCase();
+
         const isMediaMime =
           contentType.startsWith("video/") ||
           contentType.startsWith("audio/") ||
@@ -73,27 +103,85 @@ if (chrome.webRequest && chrome.webRequest.onHeadersReceived) {
             tabMediaStreams.set(tabId, new Map());
           }
           const streams = tabMediaStreams.get(tabId);
-          if (!streams.has(details.url)) {
-            let quality = "";
-            // Detect resolution from YouTube videoplayback itags or url params
+
+          const isAudio =
+            contentType.startsWith("audio/") ||
+            urlLower.includes("mime=audio") ||
+            urlLower.includes("&audio=1") ||
+            urlLower.includes("itag=140");
+
+          let quality = "";
+          let bitrateKbps = 0;
+          let durationS = 0;
+
+          // Decode Instagram/Facebook efg metadata parameter if present
+          try {
+            const parsed = new URL(cleanUrl);
+            const efg = parsed.searchParams.get("efg");
+            if (efg) {
+              const meta = JSON.parse(atob(efg));
+              if (meta.bitrate) {
+                bitrateKbps = Math.round(meta.bitrate / 1000);
+              }
+              if (meta.duration_s) {
+                durationS = meta.duration_s;
+              }
+              if (meta.vencode_tag) {
+                const tag = meta.vencode_tag.toLowerCase();
+                if (tag.includes("1080") || tag.includes("1920")) quality = "1080p HD";
+                else if (tag.includes("720") || tag.includes("1280")) quality = "720p HD";
+                else if (tag.includes("480")) quality = "480p";
+                else if (tag.includes("360")) quality = "360p";
+              }
+            }
+          } catch (e) {}
+
+          // Fallback quality based on bitrate
+          if (!quality && bitrateKbps > 0) {
+            if (bitrateKbps >= 1500) quality = "1080p HD";
+            else if (bitrateKbps >= 600) quality = "720p HD";
+            else if (bitrateKbps >= 350) quality = "480p";
+            else quality = "360p";
+          }
+
+          // YouTube videoplayback itags or url params
+          if (!quality) {
             if (urlLower.includes("itag=137") || urlLower.includes("itag=399")) quality = "1080p HD";
             else if (urlLower.includes("itag=22") || urlLower.includes("itag=136") || urlLower.includes("itag=298")) quality = "720p HD";
             else if (urlLower.includes("itag=135") || urlLower.includes("itag=244")) quality = "480p";
             else if (urlLower.includes("itag=18") || urlLower.includes("itag=134")) quality = "360p";
-            else if (urlLower.includes("itag=140") || urlLower.includes("mime=audio")) quality = "Audio Only";
+            else if (isAudio) quality = "Audio Only";
             else if (urlLower.includes("1080")) quality = "1080p HD";
             else if (urlLower.includes("720")) quality = "720p HD";
             else if (urlLower.includes("480")) quality = "480p";
+          }
+
+          if (streams.has(cleanUrl)) {
+            const existing = streams.get(cleanUrl);
+            if (totalLength > existing.contentLength) {
+              existing.contentLength = totalLength;
+              existing.sizeFormatted = formatBytes(totalLength);
+            }
+            if (!existing.quality && quality) existing.quality = quality;
+            if (!existing.bitrate && bitrateKbps) existing.bitrate = bitrateKbps;
+          } else {
+            // Skip tiny sub-100KB fragments if not a playlist or audio
+            if (totalLength > 0 && totalLength < 100000 && !urlLower.includes(".m3u8") && !isAudio && details.url !== cleanUrl) {
+              return;
+            }
 
             const streamInfo = {
-              url: details.url,
+              url: cleanUrl,
               contentType,
-              contentLength,
-              sizeFormatted: formatBytes(contentLength),
-              quality,
+              contentLength: totalLength,
+              sizeFormatted: formatBytes(totalLength),
+              quality: quality || (isAudio ? "Audio Only" : "HD Video"),
+              bitrate: bitrateKbps,
+              duration: durationS,
+              isAudio,
               timestamp: Date.now(),
             };
-            streams.set(details.url, streamInfo);
+            streams.set(cleanUrl, streamInfo);
 
             // Notify content script on the tab
             chrome.tabs.sendMessage(tabId, {
@@ -258,7 +346,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
 // Send URL to GDM Desktop App
 async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart = false) {
-  let cleanUrl = (mediaUrl || "").trim();
+  let cleanUrl = normalizeMediaUrl((mediaUrl || "").trim());
   if (!cleanUrl) return;
 
   // Resolve active tab if not passed

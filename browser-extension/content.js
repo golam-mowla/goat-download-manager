@@ -11,6 +11,26 @@
   let hideTimer = null;
   let isPermanentlyDismissed = false;
 
+  function stripRangeParams(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== "string") return rawUrl;
+    try {
+      const u = new URL(rawUrl);
+      let changed = false;
+      if (u.searchParams.has("bytestart") || u.searchParams.has("byteend")) {
+        u.searchParams.delete("bytestart");
+        u.searchParams.delete("byteend");
+        changed = true;
+      }
+      if (u.searchParams.has("range")) {
+        u.searchParams.delete("range");
+        changed = true;
+      }
+      return changed ? u.toString() : rawUrl;
+    } catch (e) {
+      return rawUrl;
+    }
+  }
+
   function isValidDownloadUrl(url) {
     if (!url || typeof url !== "string") return false;
     const clean = url.trim();
@@ -142,7 +162,7 @@
         element?.tagName === "VIDEO" ? element : element?.querySelector?.("video");
       if (vid && vid.currentSrc && isValidDownloadUrl(vid.currentSrc)) {
         return {
-          url: vid.currentSrc,
+          url: stripRangeParams(vid.currentSrc),
           title: postTitle,
           postUrl,
           videoEl: vid,
@@ -150,7 +170,7 @@
       }
 
       return {
-        url: postUrl,
+        url: stripRangeParams(postUrl),
         title: postTitle,
         postUrl,
         videoEl: vid,
@@ -284,51 +304,85 @@
       // 2. Instagram (Reels & Feed)
       const cleanTitle = title.length > 36 ? title.slice(0, 36) + "..." : title;
 
-      if (sniffedStreams.length > 0) {
-        sniffedStreams.forEach((st, idx) => {
-          const q =
-            st.quality || (idx === 0 ? "1080p HD" : idx === 1 ? "720p HD" : "480p");
-          const sizeInfo = st.sizeFormatted ? ` (${st.sizeFormatted})` : "";
-          options.push({
-            label: `${cleanTitle} MP4 file, ${durStr}quality ${q}${sizeInfo}`,
-            quality: q,
-            url: st.url || mediaTarget.url,
-          });
+      // Filter valid video streams (strip range params and remove duplicates)
+      const validStreams = sniffedStreams
+        .filter((st) => !st.isAudio && (st.contentLength === 0 || st.contentLength >= 50000))
+        .map((st) => ({
+          ...st,
+          url: stripRangeParams(st.url),
+        }));
+
+      // Sort by bitrate or contentLength descending (highest quality first)
+      validStreams.sort(
+        (a, b) => (b.bitrate || b.contentLength || 0) - (a.bitrate || a.contentLength || 0)
+      );
+
+      const seen = new Set();
+      validStreams.forEach((st) => {
+        const bitStr = st.bitrate ? `${st.bitrate} kbps` : "";
+        const key = `${st.quality}_${bitStr}_${st.url}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+
+        const detailsList = [bitStr, st.sizeFormatted].filter(Boolean);
+        const detailStr = detailsList.length > 0 ? `, ${detailsList.join(", ")}` : "";
+
+        options.push({
+          label: `${cleanTitle} MP4 file, ${durStr}quality ${st.quality}${detailStr}`,
+          quality: st.quality,
+          url: st.url,
         });
-      }
+      });
 
       if (options.length === 0) {
+        const cleanTargetUrl = stripRangeParams(mediaTarget.url || window.location.href);
         options.push(
-          { label: `${cleanTitle} MP4 file, ${durStr}quality 1080p HD`, quality: "1080p HD", url: mediaTarget.url },
-          { label: `${cleanTitle} MP4 file, ${durStr}quality 960p HD`, quality: "960p HD", url: mediaTarget.url },
-          { label: `${cleanTitle} MP4 file, ${durStr}quality 720p HD`, quality: "720p HD", url: mediaTarget.url },
-          { label: `${cleanTitle} MP4 file, ${durStr}quality 480p`, quality: "480p", url: mediaTarget.url },
-          { label: `${cleanTitle} MP3 Audio, Original Audio`, quality: "Audio", url: mediaTarget.url }
+          { label: `${cleanTitle} MP4 file, ${durStr}quality 1080p HD`, quality: "1080p HD", url: cleanTargetUrl },
+          { label: `${cleanTitle} MP4 file, ${durStr}quality 720p HD`, quality: "720p HD", url: cleanTargetUrl },
+          { label: `${cleanTitle} MP4 file, ${durStr}quality 480p`, quality: "480p", url: cleanTargetUrl },
+          { label: `${cleanTitle} MP3 Audio, Original Audio`, quality: "Audio", url: cleanTargetUrl }
         );
       }
     } else {
       // 3. Any other website
       const cleanTitle = title.length > 40 ? title.slice(0, 40) + "..." : title;
 
-      if (sniffedStreams.length > 0) {
-        sniffedStreams.forEach((st) => {
-          const q = st.quality || "HD Video";
-          const sizeInfo = st.sizeFormatted ? ` (${st.sizeFormatted})` : "";
-          options.push({
-            label: `${cleanTitle}, MP4 file, ${durStr}quality ${q}${sizeInfo}`,
-            quality: q,
-            url: st.url || mediaTarget.url,
-          });
+      const validStreams = sniffedStreams
+        .filter((st) => !st.isAudio && (st.contentLength === 0 || st.contentLength >= 50000))
+        .map((st) => ({
+          ...st,
+          url: stripRangeParams(st.url),
+        }));
+
+      validStreams.sort(
+        (a, b) => (b.bitrate || b.contentLength || 0) - (a.bitrate || a.contentLength || 0)
+      );
+
+      const seen = new Set();
+      validStreams.forEach((st) => {
+        const bitStr = st.bitrate ? `${st.bitrate} kbps` : "";
+        const key = `${st.quality}_${bitStr}_${st.url}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+
+        const detailsList = [bitStr, st.sizeFormatted].filter(Boolean);
+        const detailStr = detailsList.length > 0 ? `, ${detailsList.join(", ")}` : "";
+
+        options.push({
+          label: `${cleanTitle}, MP4 file, ${durStr}quality ${st.quality}${detailStr}`,
+          quality: st.quality,
+          url: st.url,
         });
-      }
+      });
 
       if (options.length === 0) {
+        const cleanTargetUrl = stripRangeParams(mediaTarget.url || window.location.href);
         options.push(
-          { label: `${cleanTitle}, MP4 file, Best Available HD Quality`, quality: "Best", url: mediaTarget.url },
-          { label: `${cleanTitle}, MP4 file, quality 1080p HD`, quality: "1080p HD", url: mediaTarget.url },
-          { label: `${cleanTitle}, MP4 file, quality 720p HD`, quality: "720p HD", url: mediaTarget.url },
-          { label: `${cleanTitle}, MP4 file, quality 480p`, quality: "480p", url: mediaTarget.url },
-          { label: `${cleanTitle}, MP3 Audio`, quality: "Audio", url: mediaTarget.url }
+          { label: `${cleanTitle}, MP4 file, Best Available HD Quality`, quality: "Best", url: cleanTargetUrl },
+          { label: `${cleanTitle}, MP4 file, quality 1080p HD`, quality: "1080p HD", url: cleanTargetUrl },
+          { label: `${cleanTitle}, MP4 file, quality 720p HD`, quality: "720p HD", url: cleanTargetUrl },
+          { label: `${cleanTitle}, MP4 file, quality 480p`, quality: "480p", url: cleanTargetUrl },
+          { label: `${cleanTitle}, MP3 Audio`, quality: "Audio", url: cleanTargetUrl }
         );
       }
     }
@@ -381,7 +435,7 @@
       );
       chrome.runtime.sendMessage({
         action: "SEND_TO_GDM",
-        url: mediaTarget.url,
+        url: stripRangeParams(options[0]?.url || mediaTarget.url),
         filename: mediaTarget.title,
         quality: "Best",
         autoStart: true,
@@ -433,7 +487,7 @@
         );
         chrome.runtime.sendMessage({
           action: "SEND_TO_GDM",
-          url: opt.url || mediaTarget.url,
+          url: stripRangeParams(opt.url || mediaTarget.url),
           filename: mediaTarget.title,
           quality: opt.quality,
           autoStart: true,
