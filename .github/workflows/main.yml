@@ -85,9 +85,6 @@ jobs:
           distribution: 'microsoft'
           java-version: '21'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Frontend Dependencies
         run: npm ci
 
@@ -99,9 +96,11 @@ jobs:
 
       - name: Build Android Debug APK
         working-directory: android
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_21_X64 }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Prepare APK Package
         run: |
