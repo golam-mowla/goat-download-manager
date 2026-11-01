@@ -8,8 +8,10 @@ use tokio::sync::RwLock;
 
 use librqbit::api::{Api, TorrentDetailsResponse, TorrentIdOrHash};
 use librqbit::http_api_types::{PeerStatsFilter, PeerStatsSnapshot};
-use librqbit::listen::{ListenerMode, ListenerOptions};
-use librqbit::{AddTorrent, AddTorrentOptions, Session, SessionOptions, TorrentStatsState};
+use librqbit::{
+    AddTorrent, AddTorrentOptions, ListenerMode, ListenerOptions, Session, SessionOptions,
+    TorrentStatsState,
+};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 

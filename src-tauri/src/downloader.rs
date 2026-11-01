@@ -357,7 +357,7 @@ pub async fn execute_multithreaded_download(
     state: EngineState,
     task_id: String,
 ) -> Result<(), String> {
-    let (url, _filename, save_path, mut total_bytes, mut chunk_count, is_resumable) = {
+    let (url, _filename, save_path, total_bytes, mut chunk_count, is_resumable) = {
         let tasks = state.tasks.read().await;
         let task = tasks.get(&task_id).ok_or("Task not found")?;
         (
