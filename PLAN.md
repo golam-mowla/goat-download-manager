@@ -43,6 +43,19 @@ Integration of a high-performance, asynchronous BitTorrent client into Goat Down
   - Incomplete / complete download save directory selection.
   - Sidebar "Torrents" category filter.
 
+### Phase 1.5: Professional Brand Polish & Android Mobile Integration (Completed)
+- [x] **Brand Cleanliness**:
+  - Removed "PRO" tag from next to "GDM" in `src/components/Sidebar.tsx` and `browser-extension/popup.html`.
+  - Replaced all user-facing "IDM" and legacy names across entire app with professional titles ("Multi-Threaded Turbo", "Parallel Connections", "Download Details Dialog", "Table View").
+  - Refactored `IdmDownloadDialog.tsx` into clean, professional `DownloadStatusDialog.tsx`.
+  - Retained all existing multi-threaded HTTP/HTTPS engines, Kick HLS segmented native resume, Instagram stream grabber, and BitTorrent settings.
+- [x] **Mobile App Universal Browser Interception (Android)**:
+  - Added comprehensive `android.intent.action.VIEW` and `android.intent.action.SEND` intent filters in `AndroidManifest.xml` for all mobile browsers (Chrome, Samsung Internet, Firefox, Edge, Brave, Opera).
+  - Registered handlers for magnet schemes (`magnet:*`), torrent MIME types (`application/x-bittorrent`), and file extension pathPatterns (`.zip`, `.rar`, `.7z`, `.tar`, `.gz`, `.iso`, `.apk`, `.exe`, `.msi`, `.bin`, `.pdf`, `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.mp3`, `.m4a`, `.flac`, `.wav`, `.m3u8`, `.ts`, `.torrent`).
+  - Implemented comprehensive URI/URL extraction in `MainActivity.java` supporting direct VIEW clicks, browser share sheet SEND events, and custom protocols (`gdm://`).
+  - Added Android JavaScript bridge callbacks (`onAndroidSharedUrl`, `onAndroidFolderSelected`, `onAndroidProgress`, `onAndroidComplete`, `fetchMediaInfo`) for real-time progress and folder selection.
+  - Added automated GitHub Actions CI workflow to build Android APK (`Goat-Download-Manager.apk`) on push and attach to releases.
+
 ### Phase 2: Speed, Network & Swarm Optimization
 - [ ] Swarm defaults: 200 global / 100 per-torrent connections, 4-8 upload slots, optimistic unchoke, rarest-first picker.
 - [ ] Protocol support: DHT (Mainline), Peer Exchange (PEX), Local Peer Discovery (LSD), UDP trackers, uTP.
