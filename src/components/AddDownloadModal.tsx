@@ -158,6 +158,14 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
   useEffect(() => {
     const fetchDefaultDir = async () => {
       try {
+        const androidBridge = (window as any).GMAndroidBridge;
+        if (androidBridge?.getDownloadPath) {
+          const dir = androidBridge.getDownloadPath();
+          if (dir) {
+            setSaveFolder(dir);
+            return;
+          }
+        }
         const dir = await invoke<string>("get_default_download_dir");
         if (dir) setSaveFolder(dir);
       } catch (err) {
@@ -183,6 +191,14 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
 
   const handleSelectFolder = async () => {
     try {
+      const androidBridge = (window as any).GMAndroidBridge;
+      if (androidBridge?.chooseFolder) {
+        (window as any).onAndroidFolderSelected = (folder: string) => {
+          if (folder) setSaveFolder(folder);
+        };
+        androidBridge.chooseFolder();
+        return;
+      }
       const selected = await open({
         directory: true,
         multiple: false,
@@ -234,16 +250,30 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
       setIsFetchingMedia(true);
       setErrorMessage(null);
       let parsed: any;
-      try {
-        parsed = await invoke("fetch_media_info", {
-          url: cleanUrl,
-          cookiesBrowser: null,
-          cookiesFile: null,
-          proxy: null,
-          discoveryArgs: null,
+      const androidBridge = (window as any).GMAndroidBridge;
+      if (androidBridge?.fetchMediaInfo) {
+        const callbackId = `fetch-${Date.now()}`;
+        parsed = await new Promise((resolve, reject) => {
+          (window as any).onAndroidFetchSuccess = (cbId: string, info: any) => {
+            if (cbId === callbackId) resolve(info);
+          };
+          (window as any).onAndroidFetchError = (cbId: string, err: string) => {
+            if (cbId === callbackId) reject(new Error(err));
+          };
+          androidBridge.fetchMediaInfo(cleanUrl, callbackId);
         });
-      } catch (err) {
-        parsed = await invoke("ytdlp_get_info", { url: cleanUrl });
+      } else {
+        try {
+          parsed = await invoke("fetch_media_info", {
+            url: cleanUrl,
+            cookiesBrowser: null,
+            cookiesFile: null,
+            proxy: null,
+            discoveryArgs: null,
+          });
+        } catch (err) {
+          parsed = await invoke("ytdlp_get_info", { url: cleanUrl });
+        }
       }
 
       if (typeof parsed === "string") {
@@ -392,7 +422,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
             }`}
           >
             <Zap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <span>Direct File (IDM Turbo)</span>
+            <span>Direct File (Multi-Threaded)</span>
           </button>
           <button
             onClick={() => setTab("media")}
@@ -534,7 +564,7 @@ export const AddDownloadModal: React.FC<AddDownloadModalProps> = ({
                   Simultaneous Download Segments (Threads)
                 </span>
                 <span className="font-semibold tabular-nums text-gdm-accent">
-                  {connections} Chunks (IDM Turbo)
+                  {connections} Parallel Connections
                 </span>
               </div>
               <div className="grid grid-cols-4 gap-2">

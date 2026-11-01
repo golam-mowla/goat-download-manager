@@ -314,7 +314,7 @@ chrome.downloads.onCreated.addListener((downloadItem) => {
 
 // Handle Context Menu clicks
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId === "download-with-gdm" || info.menuItemId === "download-with-parrot") {
+  if (info.menuItemId === "download-with-gdm") {
     let candidateUrl = "";
 
     // 1. Ask content script for detected element URL
@@ -480,7 +480,7 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart 
 
 // Listen to messages from popup or content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "SEND_TO_PARROT" || request.action === "SEND_TO_GDM") {
+  if (request.action === "SEND_TO_GDM") {
     const tabId = sender && sender.tab ? sender.tab.id : null;
     sendUrlToGdm(
       request.url,
@@ -504,7 +504,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === "CHECK_PARROT_STATUS" || request.action === "CHECK_GDM_STATUS") {
+  if (request.action === "CHECK_GDM_STATUS") {
     fetch(`${GDM_BRIDGE_URL}/ping`, { method: "GET" })
       .then((res) => res.json())
       .then((data) => sendResponse({ online: true, data }))

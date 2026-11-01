@@ -16,7 +16,7 @@ import { DownloadTableView } from "./components/DownloadTableView";
 import { DownloadItemCard } from "./components/DownloadItemCard";
 import { AddDownloadModal } from "./components/AddDownloadModal";
 import { PreferencesModal } from "./components/PreferencesModal";
-import { IdmDownloadDialog } from "./components/IdmDownloadDialog";
+import { DownloadStatusDialog } from "./components/DownloadStatusDialog";
 import { TorrentDetailsDrawer } from "./components/TorrentDetailsDrawer";
 import { DownloadTask } from "./types";
 
@@ -98,12 +98,26 @@ export const App: React.FC = () => {
       }
 
       try {
-        const dir = await invoke<string>("get_default_download_dir");
-        if (dir) setDefaultDir(dir);
+        const androidBridge = (window as any).GMAndroidBridge;
+        if (androidBridge?.getDownloadPath) {
+          const aDir = androidBridge.getDownloadPath();
+          if (aDir) setDefaultDir(aDir);
+        } else {
+          const dir = await invoke<string>("get_default_download_dir");
+          if (dir) setDefaultDir(dir);
+        }
       } catch {}
 
-      // Check if started with pending URL (e.g. via gdm:// protocol)
+      // Check if started with pending URL (e.g. via gdm:// protocol or Android Intent)
       try {
+        const androidBridge = (window as any).GMAndroidBridge;
+        if (androidBridge?.getPendingSharedUrl) {
+          const shared = androidBridge.getPendingSharedUrl();
+          if (shared && typeof shared === "string" && shared.trim()) {
+            setModalInitialUrl(shared.trim());
+            setIsAddModalOpen(true);
+          }
+        }
         const pending = await invoke<string | null>("get_pending_url");
         if (pending && typeof pending === "string" && pending.trim()) {
           setModalInitialUrl(pending.trim());
@@ -357,14 +371,65 @@ export const App: React.FC = () => {
     const unlistenOpenUrl = listen<any>("open-url", handleOpenUrl);
     const unlistenGdmOpenUrl = listen<any>("gdm://open-url", handleOpenUrl);
 
+    // Register Android Bridge Dynamic Callbacks
+    (window as any).onAndroidSharedUrl = (url: string) => {
+      if (url && typeof url === "string" && url.trim()) {
+        handleOpenUrl({ payload: url.trim() });
+      }
+    };
+
+    (window as any).onAndroidFolderSelected = (folder: string) => {
+      if (folder && typeof folder === "string" && folder.trim()) {
+        setDefaultDir(folder.trim());
+      }
+    };
+
+    (window as any).onAndroidProgress = (taskId: string, progress: number, eta: string, line: string) => {
+      setTasks((prev) => {
+        const index = prev.findIndex((t) => t.id === taskId);
+        if (index === -1) return prev;
+        const current = prev[index];
+        const updated = [...prev];
+        const percent = typeof progress === "number" ? Math.min(100, Math.max(0, progress)) : current.percent;
+        updated[index] = {
+          ...current,
+          percent,
+          eta_formatted: eta || current.eta_formatted,
+          status: percent >= 100 ? "completed" : "downloading",
+          progressText: line || current.progressText,
+        };
+        return updated;
+      });
+    };
+
+    (window as any).onAndroidComplete = (taskId: string, success: boolean, errorMsg?: string) => {
+      setTasks((prev) => {
+        const index = prev.findIndex((t) => t.id === taskId);
+        if (index === -1) return prev;
+        const current = prev[index];
+        const updated = [...prev];
+        updated[index] = {
+          ...current,
+          percent: success ? 100 : current.percent,
+          status: success ? "completed" : "error",
+          errorMessage: errorMsg || current.errorMessage,
+        };
+        return updated;
+      });
+    };
+
     return () => {
-      unlistenProgress.then((f) => f());
-      unlistenGdmProgress.then((f) => f());
-      unlistenComplete.then((f) => f());
-      unlistenGdmComplete.then((f) => f());
-      unlistenError.then((f) => f());
-      unlistenOpenUrl.then((f) => f());
-      unlistenGdmOpenUrl.then((f) => f());
+      unlistenProgress.then((f) => f()).catch(() => {});
+      unlistenGdmProgress.then((f) => f()).catch(() => {});
+      unlistenComplete.then((f) => f()).catch(() => {});
+      unlistenGdmComplete.then((f) => f()).catch(() => {});
+      unlistenError.then((f) => f()).catch(() => {});
+      unlistenOpenUrl.then((f) => f()).catch(() => {});
+      unlistenGdmOpenUrl.then((f) => f()).catch(() => {});
+      delete (window as any).onAndroidSharedUrl;
+      delete (window as any).onAndroidFolderSelected;
+      delete (window as any).onAndroidProgress;
+      delete (window as any).onAndroidComplete;
     };
   }, []);
 
@@ -422,6 +487,9 @@ export const App: React.FC = () => {
           console.warn("pause_torrent error:", e);
         }
       } else if (isMediaTask(task, id)) {
+        if ((window as any).GMAndroidBridge?.cancelDownload) {
+          try { (window as any).GMAndroidBridge.cancelDownload(id); } catch {}
+        }
         try {
           await invoke("cancel_download", { taskId: id });
         } catch (e) {
@@ -510,6 +578,9 @@ export const App: React.FC = () => {
           await invoke("pause_torrent", { idOrHash: task.id });
         } catch {}
       } else if (isMediaTask(task, id)) {
+        if ((window as any).GMAndroidBridge?.cancelDownload) {
+          try { (window as any).GMAndroidBridge.cancelDownload(id); } catch {}
+        }
         try {
           await invoke("cancel_download", { taskId: id });
         } catch {}
@@ -609,6 +680,35 @@ export const App: React.FC = () => {
     connections: number
   ) => {
     try {
+      const androidBridge = (window as any).GMAndroidBridge;
+      if (androidBridge?.startDownload) {
+        const taskId = `direct-${Date.now()}`;
+        const finalFilename = filename?.trim() || url.split("/").pop()?.split("?")[0] || "download";
+        const newDirectTask: DownloadTask = {
+          id: taskId,
+          url,
+          filename: finalFilename,
+          save_path: savePath || defaultDir || "Downloads",
+          total_bytes: 0,
+          downloaded_bytes: 0,
+          percent: 1.0,
+          speed_bps: 0,
+          speed_formatted: "Connecting...",
+          eta_formatted: "--",
+          status: "downloading",
+          category: "compressed",
+          chunk_count: connections || 8,
+          is_resumable: true,
+          chunks: [],
+          speedHistory: [],
+          errorMessage: undefined,
+          createdAt: new Date().toLocaleTimeString(),
+        };
+        setTasks((prev) => [newDirectTask, ...prev.filter((t) => t.id !== newDirectTask.id)]);
+        setActivePopupTask(newDirectTask);
+        androidBridge.startDownload(taskId, url, "best", "", false, "", "", false, "", savePath || "", finalFilename);
+        return;
+      }
       const taskId = await invoke<string>("start_http_download", {
         url,
         saveFolder: savePath || null,
@@ -628,11 +728,16 @@ export const App: React.FC = () => {
 
   const handleAddMediaDownload = async (options: any) => {
     try {
+      const androidBridge = (window as any).GMAndroidBridge;
       let taskId = "";
-      try {
-        taskId = await invoke<string>("ytdlp_download", { options });
-      } catch {
-        taskId = await invoke<string>("start_download", { options });
+      if (androidBridge?.startDownload) {
+        taskId = `media-${Date.now()}`;
+      } else {
+        try {
+          taskId = await invoke<string>("ytdlp_download", { options });
+        } catch {
+          taskId = await invoke<string>("start_download", { options });
+        }
       }
 
       const isAudio =
@@ -668,6 +773,22 @@ export const App: React.FC = () => {
 
       setTasks((prev) => [newMediaTask, ...prev.filter((t) => t.id !== newMediaTask.id)]);
       setActivePopupTask(newMediaTask);
+
+      if (androidBridge?.startDownload) {
+        androidBridge.startDownload(
+          taskId,
+          options.url,
+          options.formatId || "best",
+          options.container || "MP4",
+          options.enableClip || false,
+          options.startTime || "",
+          options.endTime || "",
+          options.enableSubs || false,
+          options.subLangs || "",
+          options.saveFolder || "",
+          finalFilename
+        );
+      }
     } catch (e) {
       console.error("Media download failed to start:", e);
     }
@@ -924,7 +1045,7 @@ export const App: React.FC = () => {
                   ? "bg-blue-600 text-white shadow-xs"
                   : "text-gdm-secondary hover:text-gdm-primary"
               }`}
-              title="Classic IDM Table View"
+              title="Table View"
               aria-label="Table View"
             >
               <List className="w-4 h-4" />
@@ -1034,9 +1155,9 @@ export const App: React.FC = () => {
         )}
       </div>
 
-      {/* IDM Style Download Dialog / Popup Window */}
+      {/* Download Status Dialog / Popup Window */}
       {currentPopupTask && (
-        <IdmDownloadDialog
+        <DownloadStatusDialog
           task={currentPopupTask}
           isOpen={Boolean(currentPopupTask)}
           onClose={() => setActivePopupTask(null)}

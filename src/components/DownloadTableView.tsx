@@ -286,14 +286,14 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                           </button>
                         )}
 
-                        {/* Open IDM Download Status Dialog */}
+                        {/* Open Download Details Dialog */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             onSelectTask(task.id);
                           }}
                           className="w-8 h-8 rounded-lg flex items-center justify-center text-gdm-secondary hover:text-gdm-primary hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          title="Open IDM Download Status Dialog"
+                          title="View Download Details"
                           aria-label="Open Download Dialog"
                         >
                           <span className="text-[14px]">🐐</span>

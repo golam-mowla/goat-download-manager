@@ -134,19 +134,65 @@ public class MainActivity extends BridgeActivity {
 
     private String extractUrlFromIntent(Intent intent) {
         if (intent == null) return null;
-        String text = null;
         String action = intent.getAction();
-        if (Intent.ACTION_SEND.equals(action) && "text/plain".equals(intent.getType())) {
-            text = intent.getStringExtra(Intent.EXTRA_TEXT);
-        } else if (Intent.ACTION_VIEW.equals(action) && intent.getData() != null) {
-            text = intent.getDataString();
-        }
-        if (text != null) {
-            Matcher m = Pattern.compile("https?://[^\\s]+").matcher(text);
-            if (m.find()) {
-                return m.group();
+
+        // 1. Direct Data URI (VIEW intents: magnet, gdm, gmdownloader, http, https, content, file)
+        Uri dataUri = intent.getData();
+        if (dataUri != null) {
+            String dataStr = intent.getDataString();
+            if (dataStr != null && !dataStr.isEmpty()) {
+                String trimmed = dataStr.trim();
+                if (trimmed.startsWith("gdm://")) {
+                    trimmed = trimmed.substring(6);
+                    if (trimmed.startsWith("open?url=")) {
+                        try {
+                            String query = dataUri.getQueryParameter("url");
+                            if (query != null && !query.isEmpty()) return query;
+                        } catch (Exception ignored) {}
+                    }
+                } else if (trimmed.startsWith("gmdownloader://")) {
+                    trimmed = trimmed.substring(15);
+                    if (trimmed.startsWith("open?url=")) {
+                        try {
+                            String query = dataUri.getQueryParameter("url");
+                            if (query != null && !query.isEmpty()) return query;
+                        } catch (Exception ignored) {}
+                    }
+                }
+
+                if (trimmed.startsWith("magnet:") || trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                    return trimmed;
+                }
+                if (trimmed.startsWith("content://") || trimmed.startsWith("file://")) {
+                    return trimmed;
+                }
             }
         }
+
+        // 2. Extras (SEND intents: sharing from browser or other apps)
+        if (Intent.ACTION_SEND.equals(action)) {
+            String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+            if (text != null && !text.trim().isEmpty()) {
+                String cleanText = text.trim();
+                if (cleanText.startsWith("magnet:")) {
+                    return cleanText;
+                }
+                Matcher m = Pattern.compile("https?://[^\\s]+").matcher(cleanText);
+                if (m.find()) {
+                    return m.group();
+                }
+                return cleanText;
+            }
+
+            // Stream extra for file sharing
+            try {
+                Uri streamUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+                if (streamUri != null) {
+                    return streamUri.toString();
+                }
+            } catch (Exception ignored) {}
+        }
+
         return null;
     }
 }

@@ -81,9 +81,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="font-bold text-[15px] tracking-tight text-gdm-primary">
                 GDM
               </span>
-              <span className="text-[12px] uppercase font-semibold tracking-wider px-1.5 py-0.5 rounded bg-blue-600/15 text-blue-600 dark:text-blue-400 border border-blue-500/30">
-                PRO
-              </span>
             </div>
             <span className="text-[12px] font-medium text-gdm-secondary">
               Goat Download Manager

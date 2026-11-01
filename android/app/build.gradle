@@ -29,18 +29,24 @@ android {
     }
     signingConfigs {
         release {
-            storeFile file('gmdownloader-release.keystore')
-            storePassword 'gmdownloader'
-            keyAlias 'gmdownloader'
-            keyPassword 'gmdownloader'
-            v1SigningEnabled true
-            v2SigningEnabled true
+            if (file('gmdownloader-release.keystore').exists()) {
+                storeFile file('gmdownloader-release.keystore')
+                storePassword 'gmdownloader'
+                keyAlias 'gmdownloader'
+                keyPassword 'gmdownloader'
+                v1SigningEnabled true
+                v2SigningEnabled true
+            }
         }
     }
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            if (file('gmdownloader-release.keystore').exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }

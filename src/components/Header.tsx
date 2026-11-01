@@ -53,11 +53,11 @@ export const Header: React.FC<HeaderProps> = ({
       <header className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-6 py-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 sticky top-0 z-30">
         {/* Left Side: Brand + FULL PARROT + "+ Add" Button (Image 2) */}
         <div className="flex items-center gap-3">
-          {/* Full Parrot Icon (No White Box Enclosure) */}
+          {/* Goat Icon */}
           <div className="relative shrink-0 flex items-center justify-center">
             <img
-              src="/parrot_full.png"
-              alt="GM Downloader Parrot"
+              src="/icon.png"
+              alt="Goat Download Manager"
               className="w-10 h-10 object-contain drop-shadow-[0_4px_10px_rgba(6,182,212,0.4)] hover:scale-105 transition-transform"
             />
           </div>
@@ -65,14 +65,14 @@ export const Header: React.FC<HeaderProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base sm:text-lg font-black tracking-tight bg-gradient-to-r from-slate-900 via-indigo-700 to-cyan-600 dark:from-white dark:via-cyan-300 dark:to-indigo-400 bg-clip-text text-transparent">
-                GM Downloader
+                Goat Download Manager
               </h1>
               <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-full bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-700 flex items-center gap-1">
-                v2.0.1
+                v1.2.0
               </span>
             </div>
             <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-              Universal Media Downloader &amp; Precision Clipper
+              Universal High-Speed Downloader &amp; Media Grabber
             </p>
           </div>
 
@@ -208,15 +208,15 @@ export const Header: React.FC<HeaderProps> = ({
 
             <div className="text-center space-y-2">
               <img
-                src="/parrot_full.png"
-                alt="GM Downloader"
+                src="/icon.png"
+                alt="Goat Download Manager"
                 className="w-16 h-16 object-contain mx-auto drop-shadow-md"
               />
               <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                GM Downloader v2.0.1
+                Goat Download Manager v1.2.0
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Created by Golam Mowla &bull; Powered by yt-dlp, FFmpeg &amp; Deno
+                Created by Golam Mowla &bull; Powered by Multi-Threaded Engine, BitTorrent &amp; yt-dlp
               </p>
             </div>
 
