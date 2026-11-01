@@ -14,6 +14,7 @@ import {
   Binary,
   Layers,
   Zap,
+  Radio,
 } from "lucide-react";
 import {
   DownloadTask,
@@ -63,6 +64,8 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
         return <Archive className="w-[18px] h-[18px] text-amber-600 dark:text-amber-400 shrink-0" />;
       case "programs":
         return <Binary className="w-[18px] h-[18px] text-teal-600 dark:text-teal-400 shrink-0" />;
+      case "torrents":
+        return <Radio className="w-[18px] h-[18px] text-cyan-600 dark:text-cyan-400 shrink-0" />;
       default:
         return <Layers className="w-[18px] h-[18px] text-blue-600 dark:text-blue-400 shrink-0" />;
     }
@@ -145,24 +148,37 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                       </div>
                     </td>
 
-                    {/* Size & Resume Capability */}
+                    {/* Size & Resume Capability / Torrent Swarm */}
                     <td className="py-3 px-3 text-[13px] tabular-nums font-sans text-gdm-primary">
                       <div>
                         {formatBytes(getDownloadedBytes(task))} /{" "}
                         {getTotalBytes(task) > 0 ? formatBytes(getTotalBytes(task)) : "Unknown"}
                       </div>
-                      <div className="flex items-center space-x-1.5 mt-0.5">
-                        <span className="text-[12px] text-gdm-secondary">Resume:</span>
-                        {getIsResumable(task) ? (
-                          <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-400">
-                            Yes
+                      {task.category === "torrents" ? (
+                        <div className="flex items-center space-x-1.5 mt-0.5">
+                          <span className="text-[12px] text-gdm-secondary">Seeds:</span>
+                          <span className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
+                            {task.seeders || 0}
                           </span>
-                        ) : (
-                          <span className="text-[12px] font-semibold text-red-700 dark:text-red-400">
-                            No
+                          <span className="text-[12px] text-gdm-secondary">| Peers:</span>
+                          <span className="text-[12px] font-semibold text-blue-600 dark:text-blue-400">
+                            {task.peers || 0}
                           </span>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-1.5 mt-0.5">
+                          <span className="text-[12px] text-gdm-secondary">Resume:</span>
+                          {getIsResumable(task) ? (
+                            <span className="text-[12px] font-semibold text-emerald-700 dark:text-emerald-400">
+                              Yes
+                            </span>
+                          ) : (
+                            <span className="text-[12px] font-semibold text-red-700 dark:text-red-400">
+                              No
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
 
                     {/* Progress Bar & Percent */}
@@ -205,9 +221,20 @@ export const DownloadTableView: React.FC<DownloadTableViewProps> = ({
                       </span>
                     </td>
 
-                    {/* Speed: Transfer rate uses warning text color */}
+                    {/* Speed: Transfer rate */}
                     <td className="py-3 px-3 text-[13px] font-semibold tabular-nums text-amber-800 dark:text-amber-400">
-                      {isDownloading ? getSpeedFormatted(task) : "--"}
+                      {isDownloading || task.status === "downloading" || task.status === "seeding" ? (
+                        <div>
+                          <div>{getSpeedFormatted(task)}</div>
+                          {task.up_speed_formatted && task.up_speed_formatted !== "0 B/s" && (
+                            <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                              ↑ {task.up_speed_formatted}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        "--"
+                      )}
                     </td>
 
                     {/* Time Left (ETA) */}

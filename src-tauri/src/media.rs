@@ -1055,11 +1055,12 @@ pub async fn start_download(
                 "--windows-filenames",
                 "--no-playlist",
                 "--no-check-certificates",
-                "--fragment-retries", "infinite",
+                "--retries", "10",
+                "--fragment-retries", "15",
+                "--file-access-retries", "5",
                 "--skip-unavailable-fragments",
                 "-c",
                 "--part",
-                "--hls-use-mpegts",
             ]);
         } else {
             cmd.args([
@@ -1068,6 +1069,8 @@ pub async fn start_download(
                 "--no-playlist",
                 "--no-check-certificates",
                 "--concurrent-fragments", "4",
+                "--retries", "10",
+                "--fragment-retries", "15",
                 "-c",
                 "--part",
             ]);

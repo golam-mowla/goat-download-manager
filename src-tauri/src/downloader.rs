@@ -177,33 +177,52 @@ pub fn format_eta(seconds: u64) -> String {
 pub async fn probe_url(client: &reqwest::Client, url: &str) -> Result<UrlMetadata, String> {
     const BROWSER_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
+    let mut referer = String::new();
+    if url.contains("safefilehosting.com") {
+        referer = "https://igetintopc.com/".to_string();
+    } else if let Ok(parsed) = reqwest::Url::parse(url) {
+        if let Some(host) = parsed.host_str() {
+            referer = format!("{}://{}/", parsed.scheme(), host);
+        }
+    }
+
     // Fast probe: send Range: bytes=0-0 first (IDM method).
     // In one single roundtrip (~50-100ms), 206 Partial Content returns Content-Range (exact total size),
     // Content-Disposition (filename), and verifies Range support simultaneously without downloading the file.
-    let range_req = client.get(url)
+    let mut range_req = client.get(url)
         .header(USER_AGENT, BROWSER_UA)
         .header(RANGE, "bytes=0-0")
         .header("Accept", "*/*")
         .header("Connection", "keep-alive")
         .timeout(Duration::from_secs(6));
+    if !referer.is_empty() {
+        range_req = range_req.header("Referer", &referer);
+    }
 
     let resp = match range_req.send().await {
         Ok(r) if r.status().is_success() || r.status() == reqwest::StatusCode::PARTIAL_CONTENT => r,
         _ => {
             // Fallback to fast HEAD request
-            let head_req = client.head(url)
+            let mut head_req = client.head(url)
                 .header(USER_AGENT, BROWSER_UA)
                 .header("Accept", "*/*")
                 .timeout(Duration::from_secs(4));
+            if !referer.is_empty() {
+                head_req = head_req.header("Referer", &referer);
+            }
 
             match head_req.send().await {
                 Ok(r) if r.status().is_success() => r,
                 _ => {
                     // Final fallback to plain GET
-                    client.get(url)
+                    let mut get_req = client.get(url)
                         .header(USER_AGENT, BROWSER_UA)
                         .header("Accept", "*/*")
-                        .timeout(Duration::from_secs(6))
+                        .timeout(Duration::from_secs(6));
+                    if !referer.is_empty() {
+                        get_req = get_req.header("Referer", &referer);
+                    }
+                    get_req
                         .send()
                         .await
                         .map_err(|e| format!("Failed to probe URL: {}", e))?
@@ -480,7 +499,9 @@ pub async fn execute_multithreaded_download(
                     .header("Upgrade-Insecure-Requests", "1");
 
                 // Parse origin domain for Referer header
-                if let Ok(parsed) = reqwest::Url::parse(&url) {
+                if url.contains("safefilehosting.com") {
+                    req = req.header("Referer", "https://igetintopc.com/");
+                } else if let Ok(parsed) = reqwest::Url::parse(&url) {
                     if let Some(host) = parsed.host_str() {
                         let proto = parsed.scheme();
                         req = req.header("Referer", format!("{}://{}/", proto, host));

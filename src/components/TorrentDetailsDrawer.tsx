@@ -43,10 +43,11 @@ export const TorrentDetailsDrawer: React.FC<TorrentDetailsDrawerProps> = ({
         const raw: any = await invoke("get_torrent_details", { idOrHash: torrentId });
         if (!isMounted || !raw) return;
 
+        const filesTotal: number = (raw.files || []).reduce((acc: number, f: any) => acc + (f.length || 0), 0);
         const live = raw.stats?.live;
-        const total = live?.snapshot?.total_bytes || 0;
-        const downloaded = live?.snapshot?.downloaded_bytes || 0;
-        const uploaded = live?.snapshot?.uploaded_bytes || 0;
+        const total = raw.stats?.total_bytes || filesTotal || live?.snapshot?.total_bytes || 0;
+        const downloaded = raw.stats?.progress_bytes || live?.snapshot?.downloaded_and_checked_bytes || 0;
+        const uploaded = raw.stats?.uploaded_bytes || live?.snapshot?.uploaded_bytes || 0;
         const downSpeedMbps = live?.download_speed?.mbps || 0;
         const upSpeedMbps = live?.upload_speed?.mbps || 0;
         const downBytes = downSpeedMbps * 1024 * 1024 / 8;
@@ -62,9 +63,11 @@ export const TorrentDetailsDrawer: React.FC<TorrentDetailsDrawerProps> = ({
           priority: "normal",
         }));
 
-        const numPieces = raw.info?.pieces?.length || 100;
+        const numPieces = raw.total_pieces || raw.info?.pieces?.length || 100;
         const ratio = downloaded > 0 ? (uploaded / downloaded) : 0;
         const progress = total > 0 ? (downloaded / total) * 100 : 0;
+        const peersConnected = live?.snapshot?.peer_stats?.live ?? 0;
+        const seedsConnected = live?.snapshot?.peer_stats?.live_seeders ?? 0;
 
         setDetails({
           id: torrentId,
@@ -79,8 +82,8 @@ export const TorrentDetailsDrawer: React.FC<TorrentDetailsDrawerProps> = ({
           upload_speed: `${formatBytes(upBytes)}/s`,
           eta: downBytes > 0 ? formatEta((total - downloaded) / downBytes) : "--",
           ratio,
-          peers_connected: raw.stats?.live?.snapshot?.peer_stats?.live?.length || 0,
-          seeds_connected: 0,
+          peers_connected: peersConnected,
+          seeds_connected: seedsConnected,
           save_path: raw.output_folder || "Downloads",
           piece_length: raw.info?.piece_length || 0,
           num_pieces: numPieces,
@@ -99,15 +102,23 @@ export const TorrentDetailsDrawer: React.FC<TorrentDetailsDrawerProps> = ({
         // Also fetch peers
         try {
           const peerStats: any = await invoke("get_torrent_peers", { idOrHash: torrentId });
-          if (peerStats && Array.isArray(peerStats.live)) {
-            const mappedPeers: TorrentPeerItem[] = peerStats.live.map((p: any) => ({
-              addr: p.addr || "Unknown",
-              client: p.client || "BitTorrent Peer",
-              flags: "uIP",
-              down_speed: `${formatBytes((p.down_speed?.mbps || 0) * 1024 * 1024 / 8)}/s`,
-              up_speed: `${formatBytes((p.up_speed?.mbps || 0) * 1024 * 1024 / 8)}/s`,
-              progress: Math.min(100, Math.round((p.progress || 0) * 100)),
-            }));
+          const peersMap = peerStats?.peers || {};
+          const mappedPeers: TorrentPeerItem[] = Object.entries(peersMap).map(([addr, p]: [string, any]) => {
+            const fetched = p?.counters?.fetched_bytes || 0;
+            const up = p?.counters?.uploaded_bytes || 0;
+            const clientName = p?.client_name || "BitTorrent Peer";
+            const kind = p?.conn_kind ? String(p.conn_kind).toUpperCase() : "TCP";
+            const isLive = p?.state === "live";
+            return {
+              addr: addr || "Unknown",
+              client: clientName,
+              flags: `${kind} ${isLive ? "D" : ""}`.trim(),
+              down_speed: fetched > 0 ? formatBytes(fetched) : "0 B/s",
+              up_speed: up > 0 ? formatBytes(up) : "0 B/s",
+              progress: 100,
+            };
+          });
+          if (mappedPeers.length > 0) {
             setDetails((prev) => prev ? { ...prev, peers: mappedPeers } : null);
           }
         } catch {}
@@ -115,7 +126,20 @@ export const TorrentDetailsDrawer: React.FC<TorrentDetailsDrawerProps> = ({
         // Fetch pieces
         try {
           const piecesData: any = await invoke("get_torrent_pieces", { idOrHash: torrentId });
-          if (Array.isArray(piecesData)) {
+          if (piecesData && piecesData.pieces_bitfield) {
+            const hex = String(piecesData.pieces_bitfield);
+            const totalP = piecesData.total_pieces || numPieces;
+            const bits: number[] = [];
+            for (let i = 0; i < hex.length; i += 2) {
+              const byteVal = parseInt(hex.substring(i, i + 2), 16) || 0;
+              for (let bit = 7; bit >= 0; bit--) {
+                if (bits.length < totalP) {
+                  bits.push((byteVal >> bit) & 1);
+                }
+              }
+            }
+            setPiecesBitfield(bits);
+          } else if (Array.isArray(piecesData)) {
             setPiecesBitfield(piecesData);
           }
         } catch {}

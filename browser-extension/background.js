@@ -364,7 +364,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 // Send URL to GDM Desktop App
-async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart = false, isTorrent = false, referrer = "") {
+async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart = false, isTorrent = false, referrer = "", container = "") {
   let cleanUrl = normalizeMediaUrl((mediaUrl || "").trim());
   if (!cleanUrl) return;
 
@@ -405,7 +405,8 @@ async function sendUrlToGdm(mediaUrl, tabId, customFilename, quality, autoStart 
     const autoParam = autoStart ? `&autostart=true` : "";
     const torrentParam = isTorrent ? `&isTorrent=true` : "";
     const referrerParam = referrer ? `&referrer=${encodeURIComponent(referrer)}` : "";
-    const bridgeEndpoint = `${GDM_BRIDGE_URL}/open?url=${encodeURIComponent(cleanUrl)}${filenameParam}${qualityParam}${autoParam}${torrentParam}${referrerParam}`;
+    const containerParam = container ? `&container=${encodeURIComponent(container)}` : "";
+    const bridgeEndpoint = `${GDM_BRIDGE_URL}/open?url=${encodeURIComponent(cleanUrl)}${filenameParam}${qualityParam}${autoParam}${torrentParam}${referrerParam}${containerParam}`;
     const resp = await fetch(bridgeEndpoint, {
       method: "GET",
       signal: controller.signal,
@@ -488,7 +489,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       request.quality,
       Boolean(request.autoStart),
       Boolean(request.isTorrent),
-      request.referrer || ""
+      request.referrer || "",
+      request.container || ""
     ).then((res) => sendResponse(res));
     return true;
   }

@@ -289,19 +289,32 @@ export const App: React.FC = () => {
             );
           } else {
             const isAudio = targetQuality.toLowerCase().includes("audio");
-            let videoStreamId = "bv*";
+            const isKick = clean.toLowerCase().includes("kick.com");
+            const targetContainer = raw.container
+              ? String(raw.container).toUpperCase().includes("TS")
+                ? "TS (Video)"
+                : isAudio
+                ? "MP3 (Audio)"
+                : "MP4 (Video)"
+              : isAudio
+              ? "MP3 (Audio)"
+              : "MP4 (Video)";
+
+            let videoStreamId = isKick ? "best" : "bv*";
             if (targetQuality.includes("1080")) {
-              videoStreamId = "bv*[height<=1080]";
+              videoStreamId = isKick ? "1080p60/1080p/best" : "bv*[height<=1080]";
             } else if (targetQuality.includes("720")) {
-              videoStreamId = "bv*[height<=720]";
+              videoStreamId = isKick ? "720p60/720p/best" : "bv*[height<=720]";
             } else if (targetQuality.includes("480")) {
-              videoStreamId = "bv*[height<=480]";
+              videoStreamId = isKick ? "480p/best" : "bv*[height<=480]";
             } else if (targetQuality.includes("360")) {
-              videoStreamId = "bv*[height<=360]";
+              videoStreamId = isKick ? "360p/best" : "bv*[height<=360]";
             } else if (targetQuality.includes("240")) {
-              videoStreamId = "bv*[height<=240]";
+              videoStreamId = isKick ? "240p/best" : "bv*[height<=240]";
+            } else if (targetQuality.includes("160")) {
+              videoStreamId = isKick ? "160p/best" : "bv*[height<=160]";
             } else if (targetQuality.includes("144")) {
-              videoStreamId = "bv*[height<=144]";
+              videoStreamId = isKick ? "144p/best" : "bv*[height<=144]";
             }
 
             handleAddMediaDownloadRef.current({
@@ -309,9 +322,9 @@ export const App: React.FC = () => {
               saveFolder: defaultDirRef.current,
               customFilename: targetFilename || undefined,
               downloadMode: isAudio ? "audio" : "video",
-              container: isAudio ? "MP3 (Audio)" : "MP4 (Video)",
+              container: targetContainer,
               videoStreamId: isAudio ? "" : videoStreamId,
-              audioStreamId: "ba",
+              audioStreamId: isKick ? "" : "ba",
               audioBitrate: "Best",
               enableSubtitles: false,
               subtitleLang: "en",
@@ -447,38 +460,37 @@ export const App: React.FC = () => {
           console.warn("resume_torrent error:", e);
         }
       } else if (task && isMediaTask(task, id)) {
-        // Resume media task via start_download with existing task ID and file path
+        // Resume media task via start_download with saved task options
         try {
-          await invoke("start_download", {
-            options: {
-              taskId: task.id,
-              url: task.url,
-              saveFolder: task.save_path || task.savePath || defaultDirRef.current,
-              customFilename: task.filename,
-              downloadMode: task.category === "audio" ? "audio" : "video",
-              container: task.category === "audio" ? "MP3 (Audio)" : "MP4 (Video)",
-              videoStreamId: "best",
-              audioStreamId: "ba",
-              audioBitrate: "Best",
-              enableSubtitles: false,
-              subtitleLang: "en",
-              subtitleFormat: "srt",
-              subtitleSaveMode: "separate",
-              enableClip: false,
-              startTime: "",
-              endTime: "",
-              preciseCut: false,
-              maxActiveDownloads: 3,
-              overwriteFiles: false,
-              includeMediaId: false,
-              includeAutoSubtitles: false,
-              includeSuperRes: false,
-              preferredVideoCodec: "default",
-              preferredAudioCodec: "default",
-              preferredSubtitleFormat: "default",
-              preferredFps: "default",
-            },
-          });
+          const opts = task.options || {
+            taskId: task.id,
+            url: task.url,
+            saveFolder: task.save_path || task.savePath || defaultDirRef.current,
+            customFilename: task.filename,
+            downloadMode: task.category === "audio" ? "audio" : "video",
+            container: task.category === "audio" ? "MP3 (Audio)" : "MP4 (Video)",
+            videoStreamId: "best",
+            audioStreamId: "ba",
+            audioBitrate: "Best",
+            enableSubtitles: false,
+            subtitleLang: "en",
+            subtitleFormat: "srt",
+            subtitleSaveMode: "separate",
+            enableClip: false,
+            startTime: "",
+            endTime: "",
+            preciseCut: false,
+            maxActiveDownloads: 3,
+            overwriteFiles: false,
+            includeMediaId: false,
+            includeAutoSubtitles: false,
+            includeSuperRes: false,
+            preferredVideoCodec: "default",
+            preferredAudioCodec: "default",
+            preferredSubtitleFormat: "default",
+            preferredFps: "default",
+          };
+          await invoke("start_download", { options: opts });
         } catch (e) {
           console.error("start_download resume error:", e);
         }
@@ -651,6 +663,7 @@ export const App: React.FC = () => {
         speedHistory: [],
         errorMessage: undefined,
         createdAt: new Date().toLocaleTimeString(),
+        options: { ...options, taskId },
       };
 
       setTasks((prev) => [newMediaTask, ...prev.filter((t) => t.id !== newMediaTask.id)]);

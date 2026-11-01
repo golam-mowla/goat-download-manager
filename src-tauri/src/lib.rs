@@ -286,6 +286,8 @@ async fn start_local_bridge(app_handle: AppHandle) {
                     let mut target_url = None;
                     let mut target_filename = None;
                     let mut target_quality = None;
+                    let mut target_referrer = None;
+                    let mut target_container = None;
                     let mut is_torrent = false;
                     let mut auto_start = false;
                     if let Some(idx) = req_str.find("/open?") {
@@ -304,6 +306,10 @@ async fn start_local_bridge(app_handle: AppHandle) {
                                 auto_start = &part[10..] == "true" || &part[10..] == "1";
                             } else if part.starts_with("isTorrent=") {
                                 is_torrent = &part[10..] == "true" || &part[10..] == "1";
+                            } else if part.starts_with("referrer=") {
+                                target_referrer = Some(decode_percent_encoded(&part[9..]));
+                            } else if part.starts_with("container=") {
+                                target_container = Some(decode_percent_encoded(&part[10..]));
                             }
                         }
                     }
@@ -320,7 +326,9 @@ async fn start_local_bridge(app_handle: AppHandle) {
                                 "filename": target_filename,
                                 "quality": target_quality,
                                 "autoStart": auto_start,
-                                "isTorrent": is_detected_torrent
+                                "isTorrent": is_detected_torrent,
+                                "referrer": target_referrer,
+                                "container": target_container
                             });
                             let _ = handle.emit("open-url", payload.clone());
                             let _ = handle.emit("gdm://open-url", payload);

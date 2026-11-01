@@ -8,6 +8,7 @@ use tokio::sync::RwLock;
 
 use librqbit::api::{Api, TorrentDetailsResponse, TorrentIdOrHash};
 use librqbit::http_api_types::{PeerStatsFilter, PeerStatsSnapshot};
+use librqbit::listen::{ListenerMode, ListenerOptions};
 use librqbit::{AddTorrent, AddTorrentOptions, Session, SessionOptions, TorrentStatsState};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
@@ -58,8 +59,36 @@ pub async fn get_or_init_torrent_api(
         std::env::temp_dir()
     };
 
+    let listen_opts = ListenerOptions {
+        mode: ListenerMode::TcpAndUtp,
+        listen_addr: (std::net::Ipv4Addr::UNSPECIFIED, 0).into(),
+        enable_upnp_port_forwarding: true,
+        ..Default::default()
+    };
+
+    let mut default_trackers = std::collections::HashSet::new();
+    let tracker_urls = [
+        "udp://tracker.opentrackr.org:1337/announce",
+        "udp://open.stealth.si:80/announce",
+        "udp://tracker.torrent.eu.org:451/announce",
+        "udp://explodie.org:6969/announce",
+        "udp://tracker.openbittorrent.com:6969/announce",
+        "udp://tracker.cyberia.is:6969/announce",
+        "udp://p4p.arenabg.com:1337/announce",
+        "http://tracker.openbittorrent.com:80/announce",
+        "udp://open.demonii.com:1337/announce",
+        "udp://tracker.dler.org:6969/announce",
+    ];
+    for t in tracker_urls {
+        if let Ok(u) = reqwest::Url::parse(t) {
+            default_trackers.insert(u);
+        }
+    }
+
     let session_opts = SessionOptions {
         fastresume: true,
+        listen: Some(listen_opts),
+        trackers: default_trackers,
         ..Default::default()
     };
 
@@ -124,7 +153,7 @@ pub async fn add_torrent(
         paused: request.paused.unwrap_or(false),
         output_folder: request.save_folder.clone(),
         only_files: request.selected_files.clone(),
-        overwrite: false,
+        overwrite: true,
         ..Default::default()
     };
 
@@ -135,9 +164,12 @@ pub async fn add_torrent(
 
     let id = response.id.unwrap_or(0);
     let id_or_hash = TorrentIdOrHash::Id(id);
-    let details = api
+    let mut details = api
         .api_torrent_details(id_or_hash)
         .map_err(|e| format!("Failed to fetch torrent details: {}", e))?;
+    if let Ok(st) = api.api_stats_v1(id_or_hash) {
+        details.stats = Some(st);
+    }
 
     // Background live progress ticker emitting to GDM UI
     let api_clone = api.clone();
@@ -153,17 +185,26 @@ pub async fn add_torrent(
                 Err(_) => break, // Torrent removed or closed
             };
 
-            let stats = current_details.stats.as_ref();
+            let stats_opt = api_clone.api_stats_v1(id_or_hash).ok();
+            let stats = stats_opt.as_ref();
             let live = stats.and_then(|s| s.live.as_ref());
 
-            let downloaded = live.map(|l| l.snapshot.downloaded_and_checked_bytes).unwrap_or(0);
-            let total: u64 = current_details
-                .files
-                .as_ref()
-                .map(|files| files.iter().map(|f| f.length).sum())
-                .unwrap_or(0);
+            let downloaded = stats.map(|s| s.progress_bytes).unwrap_or(0);
+            let mut total = stats.map(|s| s.total_bytes).unwrap_or(0);
+            if total == 0 {
+                total = current_details
+                    .files
+                    .as_ref()
+                    .map(|files| files.iter().map(|f| f.length).sum())
+                    .unwrap_or(0);
+            }
+
             let down_speed = live.map(|l| l.download_speed.mbps * 1024.0 * 1024.0 / 8.0).unwrap_or(0.0) as u64;
             let up_speed = live.map(|l| l.upload_speed.mbps * 1024.0 * 1024.0 / 8.0).unwrap_or(0.0) as u64;
+
+            let live_peers = live.map(|l| l.snapshot.peer_stats.live).unwrap_or(0);
+            let live_seeders = live.map(|l| l.snapshot.peer_stats.live_seeders).unwrap_or(0);
+            let total_seen = live.map(|l| l.snapshot.peer_stats.seen).unwrap_or(0);
 
             let pct = if total > 0 {
                 ((downloaded as f64 / total as f64) * 100.0).clamp(0.0, 100.0)
@@ -179,10 +220,16 @@ pub async fn add_torrent(
                 "paused"
             } else if pct >= 100.0 {
                 "seeding"
-            } else if down_speed > 0 {
+            } else if down_speed > 0 || live_peers > 0 {
                 "downloading"
             } else {
-                "stalled"
+                "connecting"
+            };
+
+            let eta_str = if down_speed > 0 && total > downloaded {
+                format_eta((total - downloaded) / down_speed)
+            } else {
+                "--".to_string()
             };
 
             let _ = app_clone.emit(
@@ -195,12 +242,15 @@ pub async fn add_torrent(
                     "speed_formatted": format!("{}/s", format_bytes(down_speed)),
                     "up_speed": format!("{}/s", format_bytes(up_speed)),
                     "up_speed_formatted": format!("{}/s", format_bytes(up_speed)),
-                    "eta": "--",
-                    "eta_formatted": "--",
+                    "eta": eta_str.clone(),
+                    "eta_formatted": eta_str,
                     "total_bytes": total,
                     "downloaded_bytes": downloaded,
                     "status": status,
                     "category": "torrents",
+                    "peers": live_peers,
+                    "seeders": live_seeders,
+                    "total_peers": total_seen,
                 }),
             );
 
@@ -225,8 +275,12 @@ pub async fn get_torrent_details(
     let api = get_or_init_torrent_api(&state, None).await?;
     let target = TorrentIdOrHash::parse(&id_or_hash)
         .map_err(|e| format!("Invalid torrent ID/hash: {}", e))?;
-    api.api_torrent_details(target)
-        .map_err(|e| format!("Failed to get details: {}", e))
+    let mut details = api.api_torrent_details(target)
+        .map_err(|e| format!("Failed to get details: {}", e))?;
+    if let Ok(st) = api.api_stats_v1(target) {
+        details.stats = Some(st);
+    }
+    Ok(details)
 }
 
 // ---------------------------------------------------------------------------
@@ -353,5 +407,15 @@ fn format_bytes(bytes: u64) -> String {
         format!("{:.1} KB", bytes as f64 / KB as f64)
     } else {
         format!("{} B", bytes)
+    }
+}
+
+fn format_eta(seconds: u64) -> String {
+    if seconds >= 3600 {
+        format!("{}h {}m", seconds / 3600, (seconds % 3600) / 60)
+    } else if seconds >= 60 {
+        format!("{}m {}s", seconds / 60, seconds % 60)
+    } else {
+        format!("{}s", seconds)
     }
 }

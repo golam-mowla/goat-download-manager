@@ -142,9 +142,17 @@
 
     // 2. Instagram (Reels, Stories, and Home Feed Articles)
     if (hostname.includes("instagram.com")) {
-      let postArticle = element
-        ? element.closest("article") || element.closest("div[role='dialog']")
-        : null;
+      const activePlaying = Array.from(document.querySelectorAll("video")).find(
+        (v) => !v.paused && v.currentTime > 0 && v.readyState >= 2
+      );
+      const vid =
+        activePlaying ||
+        (element?.tagName === "VIDEO" ? element : element?.querySelector?.("video")) ||
+        currentTargetVideo;
+
+      let postArticle = vid
+        ? vid.closest("article") || vid.closest("div[role='dialog']") || vid.closest("div[class*='reel']")
+        : element?.closest("article") || element?.closest("div[role='dialog']");
       if (!postArticle && currentTargetVideo) {
         postArticle =
           currentTargetVideo.closest("article") ||
@@ -154,10 +162,6 @@
         postArticle =
           document.querySelector("article:hover, div[role='dialog']:hover");
       }
-
-      const vid =
-        (element?.tagName === "VIDEO" ? element : element?.querySelector?.("video")) ||
-        currentTargetVideo;
 
       let postUrl = window.location.href;
       let postTitle = "";
@@ -170,12 +174,6 @@
           postUrl = postLink.href;
         }
 
-        let author = "";
-        const authorEl = postArticle.querySelector("header a, header h2, a[role='link']");
-        if (authorEl && authorEl.innerText) {
-          author = authorEl.innerText.trim();
-        }
-
         const isLikelyCaption = (txt) => {
           if (!txt || typeof txt !== "string") return false;
           const clean = txt
@@ -183,39 +181,44 @@
             .replace(/^[•·\s\-_–—|*#]+/, "")
             .replace(/[•·\s\-_–—|*#]+$/, "")
             .trim();
-          if (clean.length < 2) return false;
-          // Strictly reject timestamps: 48m, 1h, 2d, 3w, 48 mins ago, etc.
-          if (/^\d+\s*([smhdwy]|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|y|yr|yrs|year|years)(\s+ago)?$/i.test(clean)) return false;
+          if (clean.length < 3) return false;
+          // Strictly reject timestamps: 48m, 1h, 2d, 3w, 48 mins ago, 48m ago, etc.
+          if (/^\d+\s*([smhdwy]|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|wk|wks|week|weeks|y|yr|yrs|year|years)(\s*ago)?$/i.test(clean)) return false;
           if (/^\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(clean)) return false;
-          if (/^(just now|yesterday|\d+\s*m|\d+\s*h|\d+\s*d|\d+\s*w)$/i.test(clean)) return false;
+          if (/^(just now|yesterday|\d+\s*[smhdw])$/i.test(clean)) return false;
           if (/^(\d+([.,]\d+)?[KMB]?|\d+)\s*(likes?|views?|comments?|shares?)?$/i.test(clean)) return false;
           if (/^(see\s*translation|view\s*more|more|\.{3}|original\s*audio|follow|following|suggested\s*for\s*you)$/i.test(clean)) return false;
-          if (author && clean.toLowerCase() === author.toLowerCase()) return false;
           return true;
         };
 
-        // Instagram caption containers (always situated AFTER the video in the feed)
-        const captionNodes = postArticle.querySelectorAll("h1, div._a9zs, span._aade, span._aaco, span[dir='auto']");
-        for (const node of captionNodes) {
-          // Skip if this node is positioned BEFORE the video (meaning header, timestamp, or username)
-          if (vid && (node.compareDocumentPosition(vid) & Node.DOCUMENT_POSITION_FOLLOWING)) {
-            continue;
+        let author = "";
+        const authorEl = postArticle.querySelector(
+          "header h2, header a:not([href*='/p/']):not([href*='/reel/']), header a[role='link'], a[role='link']:not([href*='/p/']):not([href*='/reel/'])"
+        );
+        if (authorEl && authorEl.innerText) {
+          const aText = authorEl.innerText.replace(/[\r\n\t]+/g, " ").trim();
+          if (isLikelyCaption(aText) && aText.length <= 40) {
+            author = aText;
           }
+        }
+
+        // Instagram caption containers (all possible selectors across feed, reels, and overlay modal)
+        const captionNodes = postArticle.querySelectorAll("h1, div._a9zs, span._aade, span._aaco, span[dir='auto'], div[dir='auto'], li[role='menuitem'] span");
+        for (const node of captionNodes) {
           if (node.closest("time, a[href*='/audio/'], a[href*='/music/'], button, header")) continue;
           const t = node.innerText?.trim();
-          if (isLikelyCaption(t)) {
-            let cText = t
-              .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, " ")
-              .replace(/^[•·\s\-_–—|*#]+/, "")
-              .replace(/[•·\s\-_–—|*#]+$/, "")
-              .trim();
-            if (author && cText.toLowerCase().startsWith(author.toLowerCase())) {
-              cText = cText.slice(author.length).trim();
-            }
-            if (isLikelyCaption(cText)) {
-              postTitle = cText;
-              break;
-            }
+          if (!t) continue;
+          let cText = t
+            .replace(/[\u200B-\u200D\uFEFF\u00A0]/g, " ")
+            .replace(/^[•·\s\-_–—|*#]+/, "")
+            .replace(/[•·\s\-_–—|*#]+$/, "")
+            .trim();
+          if (author && cText.toLowerCase().startsWith(author.toLowerCase())) {
+            cText = cText.slice(author.length).trim().replace(/^[•·\s\-_–—|*#]+/, "").trim();
+          }
+          if (isLikelyCaption(cText)) {
+            postTitle = cText;
+            break;
           }
         }
 
@@ -374,6 +377,14 @@
       return;
     }
 
+    const activePlayingVid = Array.from(document.querySelectorAll("video")).find(
+      (v) => !v.paused && v.currentTime > 0 && v.readyState >= 2
+    );
+    if (activePlayingVid) {
+      currentTargetVideo = activePlayingVid;
+      mediaTarget = extractMediaTarget(activePlayingVid);
+    }
+
     let sniffedStreams = [];
     try {
       const resp = await chrome.runtime.sendMessage({
@@ -445,7 +456,7 @@
         .sort((a, b) => (b.bitrate || b.contentLength || 0) - (a.bitrate || a.contentLength || 0));
 
       validStreams.forEach((st) => {
-        const key = `${st.quality}_${st.bitrate}`;
+        const key = `${st.quality}_${st.bitrate}_${st.url}`;
         if (seen.has(key)) return;
         seen.add(key);
 
@@ -454,7 +465,7 @@
         const sizeStr = st.sizeFormatted ? `, ${st.sizeFormatted}` : "";
 
         options.push({
-          label: `${cleanTitle} .. MP4 file, ${dur}quality ${st.quality}${bitStr}${sizeStr}`,
+          label: `${cleanTitle} MP4 file, ${dur}quality ${st.quality}${bitStr}${sizeStr}`,
           quality: st.quality,
           url: st.url,
         });
@@ -463,10 +474,10 @@
       if (options.length === 0) {
         const targetVideoSrc = directSrc || stripRangeParams(mediaTarget.url || window.location.href);
         options.push(
-          { label: `${cleanTitle} .. MP4 file, ${durStr}quality 1080p HD`, quality: "1080p HD", url: targetVideoSrc },
-          { label: `${cleanTitle} .. MP4 file, ${durStr}quality 720p HD`, quality: "720p HD", url: targetVideoSrc },
-          { label: `${cleanTitle} .. MP4 file, ${durStr}quality 480p`, quality: "480p", url: targetVideoSrc },
-          { label: `${cleanTitle} .. MP3 Audio`, quality: "Audio", url: targetVideoSrc }
+          { label: `${cleanTitle} MP4 file, ${durStr}quality 1080p HD`, quality: "1080p HD", url: targetVideoSrc },
+          { label: `${cleanTitle} MP4 file, ${durStr}quality 720p HD`, quality: "720p HD", url: targetVideoSrc },
+          { label: `${cleanTitle} MP4 file, ${durStr}quality 480p`, quality: "480p", url: targetVideoSrc },
+          { label: `${cleanTitle} MP3 Audio`, quality: "Audio", url: targetVideoSrc }
         );
       }
     } else if (hostname.includes("kick.com")) {

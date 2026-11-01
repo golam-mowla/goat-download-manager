@@ -10,6 +10,7 @@ export interface ChunkProgress {
 export type TaskStatus =
   | "queued"
   | "downloading"
+  | "seeding"
   | "paused"
   | "interrupted"
   | "completed"
@@ -61,6 +62,12 @@ export interface DownloadTask {
   container?: string;
   qualityLabel?: string;
   options?: any;
+  peers?: number;
+  seeders?: number;
+  total_peers?: number;
+  totalPeers?: number;
+  up_speed?: string;
+  up_speed_formatted?: string;
 }
 
 export const getDownloadedBytes = (t: DownloadTask | any): number => {
