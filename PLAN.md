@@ -15,6 +15,12 @@ Integration of a high-performance, asynchronous BitTorrent client into Goat Down
 
 ### Phase 1: Core Torrent Engine & UI (Completed & Integrated)
 - [x] Engine initialization: Session manager, torrent storage directory, state persistence via `librqbit` (pure Rust, Apache-2.0).
+- [x] Socket Listener & Trackers: Enabled `ListenerMode::TcpAndUtp` with UPnP port forwarding and pre-populated 10 fast public trackers (`tracker.opentrackr.org`, `open.stealth.si`, `explodie.org`, `openbittorrent.com`, etc.).
+- [x] Peer Stats & Swarm Monitoring: Fixed `api_stats_v1` background polling ticker; correctly emits `live_peers`, `live_seeders`, `total_seen`, and upload/download speeds to the UI.
+- [x] Details Drawer Fixes:
+  - Fixed `TorrentDetailsDrawer.tsx` to read `peer_stats.live` (number count) and `peerStats.peers` (HashMap table).
+  - Implemented hex bitfield parser for `pieces_bitfield` into interactive color-coded block grid.
+- [x] Table View Swarm Indicators: Displays `Seeds: X | Peers: Y` and `↓ X MB/s ↑ Y KB/s` for torrent items in `DownloadTableView.tsx`.
 - [x] Add Torrent capabilities:
   - Magnet URI parsing (xt infohash, dn display name, tr tracker list).
   - `.torrent` file parsing (metainfo, file tree, piece length, infohash).
