@@ -48,8 +48,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: 'Goat Download Manager v__VERSION__'
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && 'v__VERSION__' || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && 'Goat Download Manager v__VERSION__' || '' }}
           releaseBody: 'Automated release build of Goat Download Manager (GDM).'
           releaseDraft: false
           prerelease: false
