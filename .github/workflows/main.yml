@@ -105,18 +105,19 @@ jobs:
       - name: Prepare APK Package
         run: |
           mkdir -p release-apk
-          cp android/app/build/outputs/apk/debug/app-debug.apk release-apk/Goat-Download-Manager.apk
+          find android/app/build/outputs/apk -type f -name "*.apk" -exec cp {} release-apk/ \;
+          ls -la release-apk/
 
       - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: GDM-Android-APK
-          path: release-apk/Goat-Download-Manager.apk
+          path: release-apk/*.apk
 
       - name: Attach APK to GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
-          files: release-apk/Goat-Download-Manager.apk
+          files: release-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
